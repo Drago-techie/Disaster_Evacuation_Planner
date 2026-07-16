@@ -183,6 +183,23 @@ public:
         return maxHeat;
     }
 
+    // Checks if a node is engulfed inside an active Hazard Zone radius
+    bool isNodeCompromisedByHazard(int nodeId) const {
+        const Node* node = getNode(nodeId);
+        if (!node) return false;
+
+        for (const auto& pair : nodes_) {
+            const Node& hz = pair.second;
+            if (hz.type == NodeType::HazardZone && hz.id != nodeId) {
+                float dist = node->pos.distanceTo(hz.pos);
+                if (dist <= hz.hazardRadius) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
     void toggleEdgeBlock(int u, int v) {
         auto toggleInVec = [](std::vector<Edge>& edges, int targetV) {
             for (auto& e : edges) {
@@ -227,6 +244,19 @@ public:
             }
         }
         return safeZones;
+    }
+
+    // Returns ONLY uncompromised safe zone exit IDs that are NOT engulfed in hazard spheres
+    std::vector<int> getValidSafeZoneIds() const {
+        std::vector<int> validSafeZones;
+        for (const auto& pair : nodes_) {
+            if (pair.second.type == NodeType::SafeZone) {
+                if (!isNodeCompromisedByHazard(pair.first)) {
+                    validSafeZones.push_back(pair.first);
+                }
+            }
+        }
+        return validSafeZones;
     }
 
     std::vector<int> getSpawnIds() const {

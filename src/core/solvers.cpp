@@ -26,7 +26,15 @@ void EvacSolver::computeAnalytics(const Graph& graph, PathResult& res) {
     if (!res.found || res.pathNodes.empty()) {
         res.survivalRatePercent = 0.0f;
         res.estimatedClearanceTimeMins = 0.0f;
-        res.bottleneckStatus = "Trapped - No Exit";
+
+        std::vector<int> allSafeZones = graph.getSafeZoneIds();
+        std::vector<int> validSafeZones = graph.getValidSafeZoneIds();
+
+        if (!allSafeZones.empty() && validSafeZones.empty()) {
+            res.bottleneckStatus = "ALL EXITS ENGULFED IN HAZARD";
+        } else {
+            res.bottleneckStatus = "Trapped - No Route to Exit";
+        }
         return;
     }
 
@@ -53,6 +61,15 @@ void EvacSolver::computeAnalytics(const Graph& graph, PathResult& res) {
         }
     }
 
+    // Check if destination safe node itself is compromised
+    int destNodeId = res.pathNodes.back();
+    if (graph.isNodeCompromisedByHazard(destNodeId)) {
+        res.survivalRatePercent = 0.0f;
+        res.estimatedClearanceTimeMins = 0.0f;
+        res.bottleneckStatus = "DESTINATION EXIT COMPROMISED";
+        return;
+    }
+
     // Survival rate percentage (100% minus accumulated hazard/congestion exposure)
     float riskExposure = (edgeCount > 0) ? (totalHazardRisk / edgeCount) : 0.0f;
     res.survivalRatePercent = std::max(5.0f, 100.0f - riskExposure * 55.0f);
@@ -71,7 +88,7 @@ void EvacSolver::computeAnalytics(const Graph& graph, PathResult& res) {
     }
 }
 
-// 1. BFS: Pure unweighted hop count search (ignores edge weights/hazards completely to showcase shortest hop path)
+// 1. BFS: Pure unweighted hop count search (ignores edge weights/hazards completely, but filters compromised safe exits)
 PathResult EvacSolver::solveBFS(const Graph& graph, int startNodeId) {
     PathResult res;
     res.algorithmName = "BFS (Shortest Hop Count)";
@@ -80,11 +97,20 @@ PathResult EvacSolver::solveBFS(const Graph& graph, int startNodeId) {
     const Node* startNode = graph.getNode(startNodeId);
     if (!startNode || startNode->type == NodeType::Blocked) {
         res.found = false;
+        computeAnalytics(graph, res);
         return res;
     }
 
-    std::vector<int> safeZones = graph.getSafeZoneIds();
-    std::unordered_set<int> safeZoneSet(safeZones.begin(), safeZones.end());
+    std::vector<int> validSafeZones = graph.getValidSafeZoneIds();
+    if (validSafeZones.empty()) {
+        res.found = false;
+        computeAnalytics(graph, res);
+        auto endTime = std::chrono::high_resolution_clock::now();
+        res.executionMicroseconds = std::chrono::duration<double, std::micro>(endTime - startTime).count();
+        return res;
+    }
+
+    std::unordered_set<int> safeZoneSet(validSafeZones.begin(), validSafeZones.end());
 
     if (safeZoneSet.count(startNodeId)) {
         res.found = true;
@@ -174,15 +200,16 @@ PathResult EvacSolver::solveBFS(const Graph& graph, int startNodeId) {
         std::reverse(res.pathNodes.begin(), res.pathNodes.end());
 
         if (edgeCount > 0) res.avgHazardLevel = totalHazard / edgeCount;
-        computeAnalytics(graph, res);
     }
+
+    computeAnalytics(graph, res);
 
     auto endTime = std::chrono::high_resolution_clock::now();
     res.executionMicroseconds = std::chrono::duration<double, std::micro>(endTime - startTime).count();
     return res;
 }
 
-// 2. Greedy Best-First Search: Guided purely by Euclidean distance heuristic to nearest safe exit
+// 2. Greedy Best-First Search: Guided purely by Euclidean distance to nearest uncompromised safe exit
 PathResult EvacSolver::solveGreedy(const Graph& graph, int startNodeId) {
     PathResult res;
     res.algorithmName = "Greedy Best-First Search";
@@ -191,11 +218,20 @@ PathResult EvacSolver::solveGreedy(const Graph& graph, int startNodeId) {
     const Node* startNode = graph.getNode(startNodeId);
     if (!startNode || startNode->type == NodeType::Blocked) {
         res.found = false;
+        computeAnalytics(graph, res);
         return res;
     }
 
-    std::vector<int> safeZones = graph.getSafeZoneIds();
-    std::unordered_set<int> safeZoneSet(safeZones.begin(), safeZones.end());
+    std::vector<int> validSafeZones = graph.getValidSafeZoneIds();
+    if (validSafeZones.empty()) {
+        res.found = false;
+        computeAnalytics(graph, res);
+        auto endTime = std::chrono::high_resolution_clock::now();
+        res.executionMicroseconds = std::chrono::duration<double, std::micro>(endTime - startTime).count();
+        return res;
+    }
+
+    std::unordered_set<int> safeZoneSet(validSafeZones.begin(), validSafeZones.end());
 
     if (safeZoneSet.count(startNodeId)) {
         res.found = true;
@@ -219,7 +255,7 @@ PathResult EvacSolver::solveGreedy(const Graph& graph, int startNodeId) {
     std::unordered_map<int, const Edge*> edgeUsed;
     std::unordered_set<int> visited;
 
-    float startH = minHeuristicDistance(graph, startNodeId, safeZones);
+    float startH = minHeuristicDistance(graph, startNodeId, validSafeZones);
     pq.push({startNodeId, startH});
     visited.insert(startNodeId);
 
@@ -268,7 +304,7 @@ PathResult EvacSolver::solveGreedy(const Graph& graph, int startNodeId) {
                 parent[neighbor] = curr;
                 edgeUsed[neighbor] = &edge;
 
-                float h = minHeuristicDistance(graph, neighbor, safeZones);
+                float h = minHeuristicDistance(graph, neighbor, validSafeZones);
                 pq.push({neighbor, h});
             }
         }
@@ -297,15 +333,16 @@ PathResult EvacSolver::solveGreedy(const Graph& graph, int startNodeId) {
         std::reverse(res.pathNodes.begin(), res.pathNodes.end());
 
         if (edgeCount > 0) res.avgHazardLevel = totalHazard / edgeCount;
-        computeAnalytics(graph, res);
     }
+
+    computeAnalytics(graph, res);
 
     auto endTime = std::chrono::high_resolution_clock::now();
     res.executionMicroseconds = std::chrono::duration<double, std::micro>(endTime - startTime).count();
     return res;
 }
 
-// 3. Dijkstra: Complete optimal safety path solver (evaluates distance, congestion & spreading hazard heat)
+// 3. Dijkstra: Complete optimal safety path solver (evaluates distance, congestion & spreading hazard heat to uncompromised exits)
 PathResult EvacSolver::solveDijkstra(const Graph& graph, int startNodeId) {
     PathResult res;
     res.algorithmName = "Dijkstra (Weighted Safety Optimal)";
@@ -314,11 +351,20 @@ PathResult EvacSolver::solveDijkstra(const Graph& graph, int startNodeId) {
     const Node* startNode = graph.getNode(startNodeId);
     if (!startNode || startNode->type == NodeType::Blocked) {
         res.found = false;
+        computeAnalytics(graph, res);
         return res;
     }
 
-    std::vector<int> safeZones = graph.getSafeZoneIds();
-    std::unordered_set<int> safeZoneSet(safeZones.begin(), safeZones.end());
+    std::vector<int> validSafeZones = graph.getValidSafeZoneIds();
+    if (validSafeZones.empty()) {
+        res.found = false;
+        computeAnalytics(graph, res);
+        auto endTime = std::chrono::high_resolution_clock::now();
+        res.executionMicroseconds = std::chrono::duration<double, std::micro>(endTime - startTime).count();
+        return res;
+    }
+
+    std::unordered_set<int> safeZoneSet(validSafeZones.begin(), validSafeZones.end());
 
     if (safeZoneSet.count(startNodeId)) {
         res.found = true;
@@ -425,8 +471,9 @@ PathResult EvacSolver::solveDijkstra(const Graph& graph, int startNodeId) {
         std::reverse(res.pathNodes.begin(), res.pathNodes.end());
 
         if (edgeCount > 0) res.avgHazardLevel = totalHazard / edgeCount;
-        computeAnalytics(graph, res);
     }
+
+    computeAnalytics(graph, res);
 
     auto endTime = std::chrono::high_resolution_clock::now();
     res.executionMicroseconds = std::chrono::duration<double, std::micro>(endTime - startTime).count();

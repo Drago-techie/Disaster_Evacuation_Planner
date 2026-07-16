@@ -31,9 +31,15 @@ void EvacPlannerApp::solveAll() {
     animTimer_ = 0.0f;
 
     if (bfsResult_.found && greedyResult_.found) {
-        statusMessage_ = "Computed evacuation routes for Evacuee Node " + std::to_string(selectedStartSpawnId_) + ". Simulation engine ready.";
+        statusMessage_ = "Computed evacuation routes for Evacuee Node " + std::to_string(selectedStartSpawnId_) + ". Benchmark HUD updated.";
     } else if (!bfsResult_.found && !greedyResult_.found) {
-        statusMessage_ = "WARNING: No evacuation path available from Evacuee Node " + std::to_string(selectedStartSpawnId_) + "! All exits blocked.";
+        std::vector<int> allSafe = graph_.getSafeZoneIds();
+        std::vector<int> validSafe = graph_.getValidSafeZoneIds();
+        if (!allSafe.empty() && validSafe.empty()) {
+            statusMessage_ = "CRITICAL ALERT: All designated safe exit gates are engulfed in hazard spheres! Evacuees must shelter in place.";
+        } else {
+            statusMessage_ = "WARNING: No evacuation path available from Evacuee Node " + std::to_string(selectedStartSpawnId_) + "! All exits blocked.";
+        }
     } else {
         statusMessage_ = "Partial path coverage detected under simulated hazard conditions.";
     }
@@ -437,6 +443,7 @@ void EvacPlannerApp::drawSidebar() {
     drawText(("- Selected Start: Node " + std::to_string(selectedStartSpawnId_)).c_str(), 20, 758, 13, Color{100, 220, 255, 255});
 }
 
+// Side-by-side Subway Transit Line renderer for distinct parallel multi-algorithm overlay lines
 void EvacPlannerApp::drawPathLine(const std::vector<int>& pathNodes, float offset, unsigned char r, unsigned char g, unsigned char b) {
     if (pathNodes.size() < 2) return;
 
@@ -569,7 +576,10 @@ void EvacPlannerApp::drawCanvas() {
 
         Color fillColor = Color{45, 125, 225, 255};
         if (n.id == selectedStartSpawnId_) fillColor = Color{240, 140, 30, 255};
-        else if (n.type == NodeType::SafeZone) fillColor = Color{40, 200, 100, 255};
+        else if (n.type == NodeType::SafeZone) {
+            bool isCompromised = graph_.isNodeCompromisedByHazard(n.id);
+            fillColor = isCompromised ? Color{190, 45, 45, 255} : Color{40, 200, 100, 255};
+        }
         else if (n.type == NodeType::HazardZone) fillColor = Color{220, 60, 60, 255};
         else if (n.type == NodeType::Blocked) fillColor = Color{65, 70, 80, 255};
 
@@ -652,11 +662,22 @@ void EvacPlannerApp::drawCanvas() {
         const Node& n = pair.second;
         Vector2 pos{n.pos.x, n.pos.y};
 
-        float nameW = measureTextWidth(n.name.c_str(), 18);
+        std::string badgeText = n.name;
+        bool isCompromised = (n.type == NodeType::SafeZone && graph_.isNodeCompromisedByHazard(n.id));
+        if (isCompromised) {
+            badgeText += " (HAZARD OVERRUN)";
+        }
+
+        float nameW = measureTextWidth(badgeText.c_str(), 18);
         Rectangle nameBadge{std::floor(pos.x - nameW/2.0f - 12.0f), std::floor(pos.y + 27.0f), nameW + 24.0f, 32.0f};
-        DrawRectangleRounded(nameBadge, 0.35f, 4, Color{14, 18, 26, 255});
-        DrawRectangleRoundedLines(nameBadge, 0.35f, 4, 1.2f, Color{60, 85, 115, 255});
-        drawText(n.name.c_str(), pos.x - nameW/2.0f, pos.y + 30.0f, 18, Color{252, 254, 255, 255});
+
+        Color badgeBg = isCompromised ? Color{48, 15, 15, 255} : Color{14, 18, 26, 255};
+        Color badgeBorder = isCompromised ? Color{240, 75, 75, 255} : Color{60, 85, 115, 255};
+        Color textColor = isCompromised ? Color{255, 130, 130, 255} : Color{252, 254, 255, 255};
+
+        DrawRectangleRounded(nameBadge, 0.35f, 4, badgeBg);
+        DrawRectangleRoundedLines(nameBadge, 0.35f, 4, 1.2f, badgeBorder);
+        drawText(badgeText.c_str(), pos.x - nameW/2.0f, pos.y + 30.0f, 18, textColor);
     }
 }
 
@@ -678,7 +699,17 @@ void EvacPlannerApp::drawMetricsOverlay() {
         drawText(r.algorithmName.c_str(), cardX + 14, cardY + 6, 16, themeColor);
 
         if (!r.found) {
-            drawText("STATUS: NO SAFE ROUTE FOUND", cardX + 14, cardY + 32, 14, Color{245, 75, 75, 255});
+            std::string alertText = "STATUS: NO VIABLE ROUTE";
+            if (r.bottleneckStatus == "ALL EXITS ENGULFED IN HAZARD") {
+                alertText = "ALERT: ALL EXIT GATES OVERRUN";
+            }
+            drawText(alertText.c_str(), cardX + 14, cardY + 28, 14, Color{245, 75, 75, 255});
+            drawText("Survival Rate: 0.0% (Exit Overrun)", cardX + 14, cardY + 48, 14, Color{240, 70, 70, 255});
+            drawText("Est. Clearance: N/A (Shelter In Place)", cardX + 14, cardY + 68, 13, Color{250, 160, 160, 255});
+            
+            std::stringstream s4;
+            s4 << "Visited: " << r.nodesVisited << " nodes | Latency: " << std::fixed << std::setprecision(1) << r.executionMicroseconds << " us";
+            drawText(s4.str().c_str(), cardX + 14, cardY + 88, 13, Color{150, 175, 205, 255});
             return;
         }
 
@@ -705,6 +736,7 @@ void EvacPlannerApp::drawMetricsOverlay() {
     drawMetricCard(overlayX + 370, overlayY + 38, greedyResult_, Color{210, 85, 255, 255});
     drawMetricCard(overlayX + 725, overlayY + 38, dijkstraResult_, Color{80, 235, 90, 255});
 }
+
 
 void EvacPlannerApp::draw() {
     BeginDrawing();
