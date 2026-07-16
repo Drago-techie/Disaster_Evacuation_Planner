@@ -64,7 +64,9 @@ private:
     bool isFlashFloodScenario_ = false;
     bool isFloodSpreadingActive_ = false;
     float floodSpreadTimer_ = 0.0f;
-    float floodSpreadIntervalSec_ = 3.5f; // Water spreads to neighboring corridors every 3.5s
+    float floodSpreadIntervalSec_ = 4.5f; // Slow, one-by-one pace: 1 node every 4.5s
+    float floodTotalElapsedSec_ = 0.0f;
+    const float maxFloodDurationSec_ = 180.0f; // 3 minutes max propagation limit
 
     // Step-by-Step Animation State Machine
     bool isAnimating_ = false;

@@ -15,6 +15,8 @@ void EvacPlannerApp::initGraph() {
     PresetScenarios::loadHighRiseFloorPlan(graph_);
     isFlashFloodScenario_ = false;
     isFloodSpreadingActive_ = false;
+    floodTotalElapsedSec_ = 0.0f;
+    floodSpreadTimer_ = 0.0f;
     auto spawns = graph_.getSpawnIds();
     if (!spawns.empty()) {
         selectedStartSpawnId_ = spawns[0];
@@ -135,43 +137,55 @@ void EvacPlannerApp::update() {
         }
     }
 
-    // Dynamic Flash Flood Propagation Logic (Exclusively for City Flash Flood Scenario)
+    // Dynamic Slow One-by-One Flash Flood Propagation Logic (Max 3-minute backend timer limit)
     if (isFlashFloodScenario_ && isFloodSpreadingActive_) {
-        floodSpreadTimer_ += dt;
-        if (floodSpreadTimer_ >= floodSpreadIntervalSec_) {
-            floodSpreadTimer_ = 0.0f;
+        if (floodTotalElapsedSec_ < maxFloodDurationSec_) {
+            floodTotalElapsedSec_ += dt;
+            floodSpreadTimer_ += dt;
 
-            // Collect active flood hazard nodes
-            std::vector<int> activeFloodNodes;
-            for (const auto& pair : graph_.getNodes()) {
-                if (pair.second.type == NodeType::HazardZone) {
-                    activeFloodNodes.push_back(pair.first);
-                }
-            }
+            if (floodSpreadTimer_ >= floodSpreadIntervalSec_) {
+                floodSpreadTimer_ = 0.0f;
 
-            std::vector<int> newlyFloodedNodes;
-            for (int floodId : activeFloodNodes) {
-                for (const auto& edge : graph_.getEdgesFrom(floodId)) {
-                    int neighborId = edge.toNode;
-                    Node* neighbor = graph_.getNode(neighborId);
-                    if (neighbor && neighbor->type == NodeType::Normal) {
-                        newlyFloodedNodes.push_back(neighborId);
+                // Find candidate normal nodes adjacent to active flood zones
+                std::vector<int> candidates;
+                for (const auto& pair : graph_.getNodes()) {
+                    if (pair.second.type == NodeType::HazardZone) {
+                        for (const auto& edge : graph_.getEdgesFrom(pair.first)) {
+                            int nId = edge.toNode;
+                            const Node* n = graph_.getNode(nId);
+                            if (n && n->type == NodeType::Normal) {
+                                if (std::find(candidates.begin(), candidates.end(), nId) == candidates.end()) {
+                                    candidates.push_back(nId);
+                                }
+                            }
+                        }
                     }
                 }
-            }
 
-            if (!newlyFloodedNodes.empty()) {
-                for (int nId : newlyFloodedNodes) {
-                    Node* n = graph_.getNode(nId);
+                if (!candidates.empty()) {
+                    // Pick ONE single node slowly to inundate
+                    int nextFloodedNodeId = candidates[0];
+                    Node* n = graph_.getNode(nextFloodedNodeId);
                     if (n) {
                         n->type = NodeType::HazardZone;
+                        solveAll();
+
+                        int remainingSec = (int)(maxFloodDurationSec_ - floodTotalElapsedSec_);
+                        int remainingMins = remainingSec / 60;
+                        int remSecPart = remainingSec % 60;
+
+                        std::stringstream ss;
+                        ss << "FLASH FLOOD SPREADING (Slow): Inundated sector '" << n->name 
+                           << "'. Max 3-min flood timer remaining: " << remainingMins << "m " << remSecPart << "s.";
+                        statusMessage_ = ss.str();
                     }
+                } else {
+                    statusMessage_ = "FLASH FLOOD PROPAGATION: Maximum inundation area reached.";
                 }
-                solveAll();
-                statusMessage_ = "FLASH FLOOD SPREADING: Flood waters expanded to " + std::to_string(newlyFloodedNodes.size()) + " adjacent sectors! Algorithms dynamically rerouting.";
-            } else {
-                statusMessage_ = "FLASH FLOOD PROPAGATION: Maximum inundation area reached.";
             }
+        } else {
+            isFloodSpreadingActive_ = false;
+            statusMessage_ = "FLASH FLOOD SIMULATION: 3-minute max propagation duration reached. Flood expansion halted.";
         }
     }
 
@@ -479,6 +493,8 @@ void EvacPlannerApp::drawSidebar() {
         PresetScenarios::loadHighRiseFloorPlan(graph_);
         isFlashFloodScenario_ = false;
         isFloodSpreadingActive_ = false;
+        floodTotalElapsedSec_ = 0.0f;
+        floodSpreadTimer_ = 0.0f;
         auto spawns = graph_.getSpawnIds();
         selectedStartSpawnId_ = spawns.empty() ? 1 : spawns[0];
         solveAll();
@@ -490,7 +506,9 @@ void EvacPlannerApp::drawSidebar() {
     if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && CheckCollisionPointRec(GetMousePosition(), preset2)) {
         PresetScenarios::loadCityFlashFlood(graph_);
         isFlashFloodScenario_ = true;
-        isFloodSpreadingActive_ = true; // Auto-activate dynamic flood propagation for Flash Flood
+        isFloodSpreadingActive_ = true; // Auto-activate dynamic slow flood propagation for Flash Flood
+        floodTotalElapsedSec_ = 0.0f;
+        floodSpreadTimer_ = 0.0f;
         auto spawns = graph_.getSpawnIds();
         selectedStartSpawnId_ = spawns.empty() ? 1 : spawns[0];
         solveAll();
@@ -503,6 +521,8 @@ void EvacPlannerApp::drawSidebar() {
         PresetScenarios::loadStadiumEvacuation(graph_);
         isFlashFloodScenario_ = false;
         isFloodSpreadingActive_ = false;
+        floodTotalElapsedSec_ = 0.0f;
+        floodSpreadTimer_ = 0.0f;
         auto spawns = graph_.getSpawnIds();
         selectedStartSpawnId_ = spawns.empty() ? 1 : spawns[0];
         solveAll();
@@ -512,19 +532,27 @@ void EvacPlannerApp::drawSidebar() {
     DrawLine(18, y, 242, y, Color{45, 56, 75, 255});
     y += 8;
 
-    // Flash Flood Propagation Controls (Only rendered when Flash Flood scenario is active)
+    // Slow Progressive Flash Flood Controls (Rendered exclusively for Flash Flood scenario)
     if (isFlashFloodScenario_) {
-        drawText("FLOOD PROPAGATION 🌊", 18, y, 16, Color{100, 200, 255, 255});
+        drawText("FLOOD PROPAGATION (3 MIN MAX)", 18, y, 15, Color{100, 200, 255, 255});
         y += 22;
 
         Rectangle floodToggleRect = {16.0f, (float)y, 228.0f, 32.0f};
         DrawRectangleRounded(floodToggleRect, 0.2f, 4, isFloodSpreadingActive_ ? Color{200, 75, 30, 255} : Color{32, 40, 54, 255});
         DrawRectangleRoundedLines(floodToggleRect, 0.2f, 4, 1.2f, isFloodSpreadingActive_ ? Color{255, 160, 100, 255} : Color{70, 85, 110, 255});
-        std::string floodTxt = isFloodSpreadingActive_ ? "Flood Spreading: ON" : "Flood Spreading: OFF";
-        drawText(floodTxt.c_str(), 28, y + 7, 14, WHITE);
+        
+        int remSec = std::max(0, (int)(maxFloodDurationSec_ - floodTotalElapsedSec_));
+        int remM = remSec / 60;
+        int remS = remSec % 60;
+
+        std::stringstream floodTxtSs;
+        floodTxtSs << (isFloodSpreadingActive_ ? "Slow Flood: ON (" : "Slow Flood: OFF (") << remM << "m " << remS << "s)";
+        std::string floodTxt = floodTxtSs.str();
+
+        drawText(floodTxt.c_str(), 24, y + 7, 13, WHITE);
         if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && CheckCollisionPointRec(GetMousePosition(), floodToggleRect)) {
             isFloodSpreadingActive_ = !isFloodSpreadingActive_;
-            statusMessage_ = isFloodSpreadingActive_ ? "Dynamic Flash Flood Spreading activated!" : "Dynamic Flash Flood Spreading paused.";
+            statusMessage_ = isFloodSpreadingActive_ ? "Slow 1-by-1 Flash Flood spreading active (3-min max cap)." : "Flash Flood spreading paused.";
         }
 
         y += 38;
@@ -550,6 +578,8 @@ void EvacPlannerApp::drawSidebar() {
             Node* n = const_cast<Node*>(graph_.getNode(pair.first));
             if (n && n->type == NodeType::Blocked) n->type = NodeType::Normal;
         }
+        floodTotalElapsedSec_ = 0.0f;
+        floodSpreadTimer_ = 0.0f;
         solveAll();
     }
 
