@@ -60,6 +60,12 @@ private:
     int totalAgentsEvacuated_ = 0;
     int nextAgentId_ = 1;
 
+    // Dynamic Flash Flood Propagation Engine (Exclusively for City Flash Flood Scenario)
+    bool isFlashFloodScenario_ = false;
+    bool isFloodSpreadingActive_ = false;
+    float floodSpreadTimer_ = 0.0f;
+    float floodSpreadIntervalSec_ = 3.5f; // Water spreads to neighboring corridors every 3.5s
+
     // Step-by-Step Animation State Machine
     bool isAnimating_ = false;
     int currentAnimStep_ = 0;

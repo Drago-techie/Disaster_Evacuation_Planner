@@ -13,6 +13,8 @@ EvacPlannerApp::EvacPlannerApp() {
 
 void EvacPlannerApp::initGraph() {
     PresetScenarios::loadHighRiseFloorPlan(graph_);
+    isFlashFloodScenario_ = false;
+    isFloodSpreadingActive_ = false;
     auto spawns = graph_.getSpawnIds();
     if (!spawns.empty()) {
         selectedStartSpawnId_ = spawns[0];
@@ -129,6 +131,46 @@ void EvacPlannerApp::update() {
             if (currentAnimStep_ >= (int)maxSteps) {
                 isAnimating_ = false;
                 statusMessage_ = "Step-by-step playback simulation complete.";
+            }
+        }
+    }
+
+    // Dynamic Flash Flood Propagation Logic (Exclusively for City Flash Flood Scenario)
+    if (isFlashFloodScenario_ && isFloodSpreadingActive_) {
+        floodSpreadTimer_ += dt;
+        if (floodSpreadTimer_ >= floodSpreadIntervalSec_) {
+            floodSpreadTimer_ = 0.0f;
+
+            // Collect active flood hazard nodes
+            std::vector<int> activeFloodNodes;
+            for (const auto& pair : graph_.getNodes()) {
+                if (pair.second.type == NodeType::HazardZone) {
+                    activeFloodNodes.push_back(pair.first);
+                }
+            }
+
+            std::vector<int> newlyFloodedNodes;
+            for (int floodId : activeFloodNodes) {
+                for (const auto& edge : graph_.getEdgesFrom(floodId)) {
+                    int neighborId = edge.toNode;
+                    Node* neighbor = graph_.getNode(neighborId);
+                    if (neighbor && neighbor->type == NodeType::Normal) {
+                        newlyFloodedNodes.push_back(neighborId);
+                    }
+                }
+            }
+
+            if (!newlyFloodedNodes.empty()) {
+                for (int nId : newlyFloodedNodes) {
+                    Node* n = graph_.getNode(nId);
+                    if (n) {
+                        n->type = NodeType::HazardZone;
+                    }
+                }
+                solveAll();
+                statusMessage_ = "FLASH FLOOD SPREADING: Flood waters expanded to " + std::to_string(newlyFloodedNodes.size()) + " adjacent sectors! Algorithms dynamically rerouting.";
+            } else {
+                statusMessage_ = "FLASH FLOOD PROPAGATION: Maximum inundation area reached.";
             }
         }
     }
@@ -435,16 +477,20 @@ void EvacPlannerApp::drawSidebar() {
     drawText("Building Floor Plan", 30, y + 7, 15, WHITE);
     if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && CheckCollisionPointRec(GetMousePosition(), preset1)) {
         PresetScenarios::loadHighRiseFloorPlan(graph_);
+        isFlashFloodScenario_ = false;
+        isFloodSpreadingActive_ = false;
         auto spawns = graph_.getSpawnIds();
         selectedStartSpawnId_ = spawns.empty() ? 1 : spawns[0];
         solveAll();
     }
 
-    DrawRectangleRounded(preset2, 0.2f, 4, Color{36, 48, 66, 255});
-    DrawRectangleRoundedLines(preset2, 0.2f, 4, 1.0f, Color{70, 88, 112, 255});
-    drawText("City Flash Flood", 30, y + 47, 15, WHITE);
+    DrawRectangleRounded(preset2, 0.2f, 4, isFlashFloodScenario_ ? Color{40, 95, 160, 255} : Color{36, 48, 66, 255});
+    DrawRectangleRoundedLines(preset2, 0.2f, 4, 1.0f, isFlashFloodScenario_ ? Color{100, 200, 255, 255} : Color{70, 88, 112, 255});
+    drawText("City Flash Flood 🌊", 30, y + 47, 15, WHITE);
     if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && CheckCollisionPointRec(GetMousePosition(), preset2)) {
         PresetScenarios::loadCityFlashFlood(graph_);
+        isFlashFloodScenario_ = true;
+        isFloodSpreadingActive_ = true; // Auto-activate dynamic flood propagation for Flash Flood
         auto spawns = graph_.getSpawnIds();
         selectedStartSpawnId_ = spawns.empty() ? 1 : spawns[0];
         solveAll();
@@ -455,6 +501,8 @@ void EvacPlannerApp::drawSidebar() {
     drawText("Stadium Arena Plan", 30, y + 87, 15, WHITE);
     if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && CheckCollisionPointRec(GetMousePosition(), preset3)) {
         PresetScenarios::loadStadiumEvacuation(graph_);
+        isFlashFloodScenario_ = false;
+        isFloodSpreadingActive_ = false;
         auto spawns = graph_.getSpawnIds();
         selectedStartSpawnId_ = spawns.empty() ? 1 : spawns[0];
         solveAll();
@@ -463,6 +511,26 @@ void EvacPlannerApp::drawSidebar() {
     y += 122;
     DrawLine(18, y, 242, y, Color{45, 56, 75, 255});
     y += 8;
+
+    // Flash Flood Propagation Controls (Only rendered when Flash Flood scenario is active)
+    if (isFlashFloodScenario_) {
+        drawText("FLOOD PROPAGATION 🌊", 18, y, 16, Color{100, 200, 255, 255});
+        y += 22;
+
+        Rectangle floodToggleRect = {16.0f, (float)y, 228.0f, 32.0f};
+        DrawRectangleRounded(floodToggleRect, 0.2f, 4, isFloodSpreadingActive_ ? Color{200, 75, 30, 255} : Color{32, 40, 54, 255});
+        DrawRectangleRoundedLines(floodToggleRect, 0.2f, 4, 1.2f, isFloodSpreadingActive_ ? Color{255, 160, 100, 255} : Color{70, 85, 110, 255});
+        std::string floodTxt = isFloodSpreadingActive_ ? "Flood Spreading: ON" : "Flood Spreading: OFF";
+        drawText(floodTxt.c_str(), 28, y + 7, 14, WHITE);
+        if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && CheckCollisionPointRec(GetMousePosition(), floodToggleRect)) {
+            isFloodSpreadingActive_ = !isFloodSpreadingActive_;
+            statusMessage_ = isFloodSpreadingActive_ ? "Dynamic Flash Flood Spreading activated!" : "Dynamic Flash Flood Spreading paused.";
+        }
+
+        y += 38;
+        DrawLine(18, y, 242, y, Color{45, 56, 75, 255});
+        y += 8;
+    }
 
     drawText("HAZARD CONTROLS", 18, y, 17, Color{215, 230, 252, 255});
     y += 22;
