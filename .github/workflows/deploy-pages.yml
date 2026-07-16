@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
   pages: write
   id-token: write
 
@@ -37,10 +37,19 @@ jobs:
         run: |
           cmake --build build-web --config Release
 
-      - name: Rename HTML Output for Root Access
+      - name: Prepare Web Root Assets
         run: |
           mv build-web/DisasterEvacPlanner.html build-web/index.html
 
+      # Deployment Path 1: Push built Wasm HTML5 assets directly to gh-pages branch
+      - name: Deploy to gh-pages branch
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: build-web
+          force_orphan: true
+
+      # Deployment Path 2: Deploy artifact for GitHub Actions Pages pipeline
       - name: Upload Pages Artifact
         uses: actions/upload-pages-artifact@v3
         with:
