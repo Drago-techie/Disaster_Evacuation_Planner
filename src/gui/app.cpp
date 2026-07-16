@@ -31,7 +31,7 @@ void EvacPlannerApp::solveAll() {
     animTimer_ = 0.0f;
 
     if (bfsResult_.found && greedyResult_.found) {
-        statusMessage_ = "Computed evacuation routes for Evacuee Node " + std::to_string(selectedStartSpawnId_) + ". Benchmark HUD updated.";
+        statusMessage_ = "Computed evacuation routes for Evacuee Node " + std::to_string(selectedStartSpawnId_) + ". Simulation engine ready.";
     } else if (!bfsResult_.found && !greedyResult_.found) {
         statusMessage_ = "WARNING: No evacuation path available from Evacuee Node " + std::to_string(selectedStartSpawnId_) + "! All exits blocked.";
     } else {
@@ -127,11 +127,46 @@ void EvacPlannerApp::update() {
 
     hoveredNodeId_ = getNodeAtPosition(mPos);
 
+    // Keyboard shortcut: Press DEL or BACKSPACE to instantly delete hovered node
+    if ((IsKeyPressed(KEY_DELETE) || IsKeyPressed(KEY_BACKSPACE)) && hoveredNodeId_ != -1) {
+        int targetDel = hoveredNodeId_;
+        graph_.removeNode(targetDel);
+        if (selectedStartSpawnId_ == targetDel) {
+            auto spawns = graph_.getSpawnIds();
+            selectedStartSpawnId_ = spawns.empty() ? 1 : spawns[0];
+        }
+        solveAll();
+        statusMessage_ = "Deleted Node " + std::to_string(targetDel) + " via keyboard shortcut.";
+    }
+
     bool mouseOnCanvas = (mousePos.x > 260.0f && mousePos.x < 1370.0f && mousePos.y > 72.0f && mousePos.y < 570.0f);
 
     if (mouseOnCanvas) {
         if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
-            if (hoveredNodeId_ != -1) {
+            if (currentTool_ == ToolMode::DeleteNode) {
+                if (hoveredNodeId_ != -1) {
+                    int delId = hoveredNodeId_;
+                    graph_.removeNode(delId);
+                    if (selectedStartSpawnId_ == delId) {
+                        auto spawns = graph_.getSpawnIds();
+                        selectedStartSpawnId_ = spawns.empty() ? 1 : spawns[0];
+                    }
+                    solveAll();
+                    statusMessage_ = "Deleted Node " + std::to_string(delId) + " successfully.";
+                }
+            } else if (currentTool_ == ToolMode::DeleteEdge) {
+                if (hoveredNodeId_ != -1) {
+                    if (edgeStartNodeId_ == -1) {
+                        edgeStartNodeId_ = hoveredNodeId_;
+                        statusMessage_ = "Delete Edge: Select second node to un-link corridor.";
+                    } else if (edgeStartNodeId_ != hoveredNodeId_) {
+                        graph_.removeEdge(edgeStartNodeId_, hoveredNodeId_);
+                        edgeStartNodeId_ = -1;
+                        solveAll();
+                        statusMessage_ = "Corridor edge un-linked successfully.";
+                    }
+                }
+            } else if (hoveredNodeId_ != -1) {
                 if (currentTool_ == ToolMode::Select) {
                     draggingNodeId_ = hoveredNodeId_;
                     selectedNodeId_ = hoveredNodeId_;
@@ -198,32 +233,35 @@ void EvacPlannerApp::update() {
 
 void EvacPlannerApp::drawHeader() {
     DrawRectangle(0, 0, 1380, 72, Color{22, 27, 36, 255});
-    drawText("DISASTER EVACUATION ROUTE PLANNER", 18, 10, 24, Color{250, 252, 255, 255});
-    drawText("C++ Graph Module | BFS vs. Greedy Search Benchmark Engine", 18, 42, 15, Color{180, 202, 230, 255});
+    drawText("DISASTER EVACUATION ROUTE PLANNER", 16, 10, 22, Color{250, 252, 255, 255});
+    drawText("C++ Graph Module | BFS vs. Greedy Search Benchmark Engine", 16, 40, 14, Color{180, 202, 230, 255});
 
-    struct ButtonDef { const char* label; ToolMode mode; };
+    struct ButtonDef { const char* label; ToolMode mode; Color highlightColor; };
     ButtonDef buttons[] = {
-        {"Select / Drag", ToolMode::Select},
-        {"Set Start", ToolMode::SetSpawn},
-        {"Toggle Exit", ToolMode::SetSafeZone},
-        {"Add Edge", ToolMode::AddEdge},
-        {"Add Node", ToolMode::AddNode}
+        {"Select / Drag", ToolMode::Select, Color{40, 130, 240, 255}},
+        {"Set Start", ToolMode::SetSpawn, Color{40, 130, 240, 255}},
+        {"Toggle Exit", ToolMode::SetSafeZone, Color{40, 130, 240, 255}},
+        {"Add Edge", ToolMode::AddEdge, Color{40, 130, 240, 255}},
+        {"Add Node", ToolMode::AddNode, Color{40, 130, 240, 255}},
+        {"Del Node", ToolMode::DeleteNode, Color{210, 50, 50, 255}},
+        {"Del Edge", ToolMode::DeleteEdge, Color{210, 50, 50, 255}}
     };
 
-    int startX = 635;
-    for (int i = 0; i < 5; i++) {
-        Rectangle btnRect = {(float)(startX + i * 145), 12.0f, 138.0f, 48.0f};
+    int startX = 460;
+    for (int i = 0; i < 7; i++) {
+        Rectangle btnRect = {(float)(startX + i * 128), 12.0f, 122.0f, 48.0f};
         bool active = (currentTool_ == buttons[i].mode);
-        Color bg = active ? Color{40, 130, 240, 255} : Color{34, 44, 60, 255};
+        Color bg = active ? buttons[i].highlightColor : Color{34, 44, 60, 255};
         DrawRectangleRounded(btnRect, 0.25f, 4, bg);
-        DrawRectangleRoundedLines(btnRect, 0.25f, 4, 1.5f, active ? Color{120, 200, 255, 255} : Color{70, 85, 110, 255});
+        DrawRectangleRoundedLines(btnRect, 0.25f, 4, 1.5f, active ? Color{255, 255, 255, 255} : Color{70, 85, 110, 255});
         
-        float txtW = measureTextWidth(buttons[i].label, 17);
-        drawText(buttons[i].label, btnRect.x + (btnRect.width - txtW)/2.0f, btnRect.y + 14.0f, 17, WHITE);
+        float txtW = measureTextWidth(buttons[i].label, 15);
+        drawText(buttons[i].label, btnRect.x + (btnRect.width - txtW)/2.0f, btnRect.y + 16.0f, 15, WHITE);
 
         if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && CheckCollisionPointRec(GetMousePosition(), btnRect)) {
             currentTool_ = buttons[i].mode;
             edgeStartNodeId_ = -1;
+            statusMessage_ = "Switched tool mode to " + std::string(buttons[i].label);
         }
     }
 }
@@ -395,11 +433,10 @@ void EvacPlannerApp::drawSidebar() {
     drawText("HINT / CONTROLS:", 20, 684, 14, Color{255, 205, 110, 255});
     drawText("- Left-Click: Select/Drag nodes", 20, 704, 13, Color{200, 212, 230, 255});
     drawText("- Right-Click Node: Cycle Hazard", 20, 722, 13, Color{200, 212, 230, 255});
-    drawText("- Select Tool 'Add Edge' to link", 20, 740, 13, Color{200, 212, 230, 255});
+    drawText("- Del Key: Delete hovered node", 20, 740, 13, Color{200, 212, 230, 255});
     drawText(("- Selected Start: Node " + std::to_string(selectedStartSpawnId_)).c_str(), 20, 758, 13, Color{100, 220, 255, 255});
 }
 
-// Side-by-side Subway Transit Line renderer for distinct parallel multi-algorithm overlay lines
 void EvacPlannerApp::drawPathLine(const std::vector<int>& pathNodes, float offset, unsigned char r, unsigned char g, unsigned char b) {
     if (pathNodes.size() < 2) return;
 

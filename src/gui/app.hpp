@@ -16,7 +16,9 @@ enum class ToolMode {
     ToggleBlock,
     SetHazard,
     SetSpawn,
-    SetSafeZone
+    SetSafeZone,
+    DeleteNode,
+    DeleteEdge
 };
 
 class EvacPlannerApp {

@@ -106,6 +106,27 @@ public:
         return id;
     }
 
+    void removeEdge(int u, int v) {
+        auto removeInVec = [](std::vector<Edge>& edges, int targetV) {
+            edges.erase(std::remove_if(edges.begin(), edges.end(), [targetV](const Edge& e) {
+                return e.toNode == targetV;
+            }), edges.end());
+        };
+        if (adj_.find(u) != adj_.end()) removeInVec(adj_[u], v);
+        if (adj_.find(v) != adj_.end()) removeInVec(adj_[v], u);
+    }
+
+    void removeNode(int id) {
+        nodes_.erase(id);
+        adj_.erase(id);
+        for (auto& pair : adj_) {
+            auto& vec = pair.second;
+            vec.erase(std::remove_if(vec.begin(), vec.end(), [id](const Edge& e) {
+                return e.toNode == id;
+            }), vec.end());
+        }
+    }
+
     bool hasNode(int id) const {
         return nodes_.find(id) != nodes_.end();
     }
@@ -196,17 +217,6 @@ public:
         };
         if (adj_.find(u) != adj_.end()) setInVec(adj_[u], v);
         if (adj_.find(v) != adj_.end()) setInVec(adj_[v], u);
-    }
-
-    void removeNode(int id) {
-        nodes_.erase(id);
-        adj_.erase(id);
-        for (auto& pair : adj_) {
-            auto& vec = pair.second;
-            vec.erase(std::remove_if(vec.begin(), vec.end(), [id](const Edge& e) {
-                return e.toNode == id;
-            }), vec.end());
-        }
     }
 
     std::vector<int> getSafeZoneIds() const {
