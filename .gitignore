@@ -1,0 +1,8 @@
+build/
+.system_generated/
+*.exe
+*.o
+*.a
+*.obj
+.vscode/
+.idea/
