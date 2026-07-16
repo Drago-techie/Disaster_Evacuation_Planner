@@ -6,7 +6,14 @@ Built for the **SIH Disaster Management** theme using **C++17**, **Raylib 5.0**,
 
 ![C++](https://img.shields.io/badge/C%2B%2B-17-blue.svg)
 ![Build](https://img.shields.io/badge/Build-CMake%20%7C%20MinGW-green.svg)
+![WebAssembly](https://img.shields.io/badge/WebAssembly-Wasm-purple.svg)
 ![GUI](https://img.shields.io/badge/GUI-Raylib%205.0-orange.svg)
+
+---
+
+## Live Interactive Web Demo
+
+- **WebAssembly (Wasm) Browser Preview**: [https://drago-techie.github.io/Disaster_Evacuation_Planner/](https://drago-techie.github.io/Disaster_Evacuation_Planner/)
 
 ---
 
@@ -65,20 +72,23 @@ cmake --build build
 
 ```text
 Disaster_Evacuation_Planner/
+├── .github/
+│   └── workflows/
+│       └── deploy-pages.yml # Wasm GitHub Pages Deployment Workflow
 ├── assets/
 │   └── fonts/
-│       └── font.ttf       # Bundled TTF Vector Typography Asset
+│       └── font.ttf         # Bundled TTF Vector Typography Asset
 ├── src/
 │   ├── core/
-│   │   ├── graph.hpp      # Adjacency List Graph Engine & Hazard Radius calculations
-│   │   ├── solvers.hpp    # BFS, Greedy, and Dijkstra solvers with SearchStep recording
-│   │   ├── solvers.cpp    # Pathfinding implementations & Evacuee Throughput Analytics
-│   │   └── presets.hpp    # Pre-built disaster scenario maps
+│   │   ├── graph.hpp        # Adjacency List Graph Engine & Hazard Radius calculations
+│   │   ├── solvers.hpp      # BFS, Greedy, and Dijkstra solvers with SearchStep recording
+│   │   ├── solvers.cpp      # Pathfinding implementations & Evacuee Throughput Analytics
+│   │   └── presets.hpp      # Pre-built disaster scenario maps
 │   ├── gui/
-│   │   ├── app.hpp        # Application state machine & rendering declarations
-│   │   └── app.cpp        # Canvas renderer, GUI control widgets & animation engine
-│   └── main.cpp           # Entry point
-├── CMakeLists.txt         # CMake build configuration with auto-fetching Raylib
+│   │   ├── app.hpp          # Application state machine & rendering declarations
+│   │   └── app.cpp          # Canvas renderer, GUI control widgets & animation engine
+│   └── main.cpp             # Entry point
+├── CMakeLists.txt           # CMake build configuration with auto-fetching Raylib
 ├── .gitignore
 └── README.md
 ```
