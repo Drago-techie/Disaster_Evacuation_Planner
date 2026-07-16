@@ -44,7 +44,7 @@ void EvacSolver::computeAnalytics(const Graph& graph, PathResult& res) {
                 float radiusHeat = graph.getEdgeHazardRadiusInfluence(u, v);
                 float combinedHazard = std::min(1.0f, edge.hazardLevel + radiusHeat);
 
-                totalHazardRisk += combinedHazard * 1.5f + edge.congestion * 1.0f;
+                totalHazardRisk += combinedHazard * 2.0f + edge.congestion * 1.5f;
                 if (edge.congestion > maxCongestion) maxCongestion = edge.congestion;
                 if (combinedHazard > maxHazard) maxHazard = combinedHazard;
                 edgeCount++;
@@ -53,27 +53,28 @@ void EvacSolver::computeAnalytics(const Graph& graph, PathResult& res) {
         }
     }
 
-    // Survival rate percentage (100% minus accumulated hazard/congestion penalties)
-    float penalty = (edgeCount > 0) ? (totalHazardRisk / edgeCount) * 45.0f : 0.0f;
-    res.survivalRatePercent = std::max(10.0f, 100.0f - penalty);
+    // Survival rate percentage (100% minus accumulated hazard/congestion exposure)
+    float riskExposure = (edgeCount > 0) ? (totalHazardRisk / edgeCount) : 0.0f;
+    res.survivalRatePercent = std::max(5.0f, 100.0f - riskExposure * 55.0f);
 
-    // Clearance time in minutes (walking speed ~ 84m/min adjusted by congestion throughput bottleneck)
+    // Clearance time in minutes (walking speed ~ 84m/min adjusted by corridor bottleneck factor)
     float baseTimeMins = res.totalDistance / 84.0f;
-    float bottleneckFactor = 1.0f + 2.8f * maxCongestion + 2.2f * maxHazard;
+    float bottleneckFactor = 1.0f + 3.2f * maxCongestion + 2.8f * maxHazard;
     res.estimatedClearanceTimeMins = baseTimeMins * bottleneckFactor;
 
-    if (maxCongestion > 0.6f || maxHazard > 0.6f) {
+    if (maxCongestion > 0.5f || maxHazard > 0.5f) {
         res.bottleneckStatus = "High Bottleneck Risk";
-    } else if (maxCongestion > 0.3f || maxHazard > 0.3f) {
+    } else if (maxCongestion > 0.2f || maxHazard > 0.2f) {
         res.bottleneckStatus = "Moderate Flow";
     } else {
         res.bottleneckStatus = "Optimal Flow";
     }
 }
 
+// 1. BFS: Pure unweighted hop count search (ignores edge weights/hazards completely to showcase shortest hop path)
 PathResult EvacSolver::solveBFS(const Graph& graph, int startNodeId) {
     PathResult res;
-    res.algorithmName = "BFS (Breadth-First Search)";
+    res.algorithmName = "BFS (Shortest Hop Count)";
     auto startTime = std::chrono::high_resolution_clock::now();
 
     const Node* startNode = graph.getNode(startNodeId);
@@ -109,19 +110,16 @@ PathResult EvacSolver::solveBFS(const Graph& graph, int startNodeId) {
         q.pop();
         res.nodesVisited++;
 
-        // Record step for step-by-step playback animation
         SearchStep step;
         step.currentNodeId = curr;
         step.visitedNodes = std::vector<int>(visited.begin(), visited.end());
 
-        // Snapshot current frontier
         std::queue<int> tempQ = q;
         while (!tempQ.empty()) {
             step.frontierNodes.push_back(tempQ.front());
             tempQ.pop();
         }
 
-        // Snapshot temp partial path back to start
         int pCurr = curr;
         while (pCurr != startNodeId) {
             step.currentPath.push_back(pCurr);
@@ -138,7 +136,7 @@ PathResult EvacSolver::solveBFS(const Graph& graph, int startNodeId) {
         }
 
         for (const auto& edge : graph.getEdgesFrom(curr)) {
-            if (edge.isBlocked) continue; // Skip blocked corridor
+            if (edge.isBlocked) continue;
             
             int neighbor = edge.toNode;
             const Node* neighborNode = graph.getNode(neighbor);
@@ -184,6 +182,7 @@ PathResult EvacSolver::solveBFS(const Graph& graph, int startNodeId) {
     return res;
 }
 
+// 2. Greedy Best-First Search: Guided purely by Euclidean distance heuristic to nearest safe exit
 PathResult EvacSolver::solveGreedy(const Graph& graph, int startNodeId) {
     PathResult res;
     res.algorithmName = "Greedy Best-First Search";
@@ -232,7 +231,6 @@ PathResult EvacSolver::solveGreedy(const Graph& graph, int startNodeId) {
         int curr = top.nodeId;
         res.nodesVisited++;
 
-        // Record step snapshot
         SearchStep step;
         step.currentNodeId = curr;
         step.visitedNodes = std::vector<int>(visited.begin(), visited.end());
@@ -270,10 +268,7 @@ PathResult EvacSolver::solveGreedy(const Graph& graph, int startNodeId) {
                 parent[neighbor] = curr;
                 edgeUsed[neighbor] = &edge;
 
-                float radiusHeat = graph.getEdgeHazardRadiusInfluence(curr, neighbor);
-                float totalHazard = std::min(1.0f, edge.hazardLevel + radiusHeat);
-
-                float h = minHeuristicDistance(graph, neighbor, safeZones) * (1.0f + 2.5f * totalHazard + 1.5f * edge.congestion);
+                float h = minHeuristicDistance(graph, neighbor, safeZones);
                 pq.push({neighbor, h});
             }
         }
@@ -310,6 +305,7 @@ PathResult EvacSolver::solveGreedy(const Graph& graph, int startNodeId) {
     return res;
 }
 
+// 3. Dijkstra: Complete optimal safety path solver (evaluates distance, congestion & spreading hazard heat)
 PathResult EvacSolver::solveDijkstra(const Graph& graph, int startNodeId) {
     PathResult res;
     res.algorithmName = "Dijkstra (Weighted Safety Optimal)";
@@ -362,7 +358,6 @@ PathResult EvacSolver::solveDijkstra(const Graph& graph, int startNodeId) {
         visited.insert(curr);
         res.nodesVisited++;
 
-        // Record step snapshot
         SearchStep step;
         step.currentNodeId = curr;
         step.visitedNodes = std::vector<int>(visited.begin(), visited.end());

@@ -31,7 +31,7 @@ void EvacPlannerApp::solveAll() {
     animTimer_ = 0.0f;
 
     if (bfsResult_.found && greedyResult_.found) {
-        statusMessage_ = "Computed evacuation routes for Evacuee Node " + std::to_string(selectedStartSpawnId_) + ". Simulation engine ready.";
+        statusMessage_ = "Computed evacuation routes for Evacuee Node " + std::to_string(selectedStartSpawnId_) + ". Benchmark HUD updated.";
     } else if (!bfsResult_.found && !greedyResult_.found) {
         statusMessage_ = "WARNING: No evacuation path available from Evacuee Node " + std::to_string(selectedStartSpawnId_) + "! All exits blocked.";
     } else {
@@ -399,6 +399,7 @@ void EvacPlannerApp::drawSidebar() {
     drawText(("- Selected Start: Node " + std::to_string(selectedStartSpawnId_)).c_str(), 20, 758, 13, Color{100, 220, 255, 255});
 }
 
+// Side-by-side Subway Transit Line renderer for distinct parallel multi-algorithm overlay lines
 void EvacPlannerApp::drawPathLine(const std::vector<int>& pathNodes, float offset, unsigned char r, unsigned char g, unsigned char b) {
     if (pathNodes.size() < 2) return;
 
@@ -417,7 +418,7 @@ void EvacPlannerApp::drawPathLine(const std::vector<int>& pathNodes, float offse
             Vector2 p1{u->pos.x + nx, u->pos.y + ny};
             Vector2 p2{v->pos.x + nx, v->pos.y + ny};
 
-            DrawLineEx(p1, p2, 4.5f, Color{r, g, b, 220});
+            DrawLineEx(p1, p2, 4.5f, Color{r, g, b, 235});
         }
     }
 }
@@ -483,7 +484,7 @@ void EvacPlannerApp::drawCanvas() {
         }
     }
 
-    // 2. Draw Algorithm Paths (Full or Step-by-Step Animated Playback)
+    // 2. Draw Algorithm Paths (Distinct Subway Map Side-by-Side Lines: Dijkstra +7px, Greedy 0px, BFS -7px)
     bool isStepPlaybackMode = isAnimating_ || (currentAnimStep_ > 0);
 
     if (isStepPlaybackMode) {
@@ -514,14 +515,14 @@ void EvacPlannerApp::drawCanvas() {
             }
         };
 
-        if (showDijkstra_) drawStepPath(dijkstraResult_, Color{80, 235, 90, 255}, 5.0f);
+        if (showDijkstra_) drawStepPath(dijkstraResult_, Color{80, 235, 90, 255}, 7.0f);
         if (showGreedy_) drawStepPath(greedyResult_, Color{210, 85, 255, 255}, 0.0f);
-        if (showBFS_) drawStepPath(bfsResult_, Color{0, 210, 255, 255}, -5.0f);
+        if (showBFS_) drawStepPath(bfsResult_, Color{0, 210, 255, 255}, -7.0f);
     } else {
-        // Static full completed path overlays (when step == 0 and paused)
-        if (showDijkstra_ && dijkstraResult_.found) drawPathLine(dijkstraResult_.pathNodes, 5.0f, 80, 235, 90);
+        // Static full completed subway side-by-side path overlays
+        if (showDijkstra_ && dijkstraResult_.found) drawPathLine(dijkstraResult_.pathNodes, 7.0f, 80, 235, 90);
         if (showGreedy_ && greedyResult_.found) drawPathLine(greedyResult_.pathNodes, 0.0f, 210, 85, 255);
-        if (showBFS_ && bfsResult_.found) drawPathLine(bfsResult_.pathNodes, -5.0f, 0, 210, 255);
+        if (showBFS_ && bfsResult_.found) drawPathLine(bfsResult_.pathNodes, -7.0f, 0, 210, 255);
     }
 
     // 3. Draw Nodes (Circles)
@@ -543,7 +544,7 @@ void EvacPlannerApp::drawCanvas() {
         DrawCircleLines((int)pos.x, (int)pos.y, 22.0f, Color{255, 255, 255, 220});
     }
 
-    // 4. Draw Distance & Blocked Pills ON TOP with POINT texture filter and integer grid alignment
+    // 4. Draw Distance vs Dynamic Risk Value Pills ON TOP with POINT texture filter and integer grid alignment
     for (const auto& pair : graph_.getAdjacencyList()) {
         int uId = pair.first;
         const Node* u = graph_.getNode(uId);
@@ -561,8 +562,8 @@ void EvacPlannerApp::drawCanvas() {
             float len = std::sqrt(dx * dx + dy * dy);
             if (len == 0.0f) continue;
 
-            float nx = -dy / len * 16.0f;
-            float ny = dx / len * 16.0f;
+            float nx = -dy / len * 18.0f;
+            float ny = dx / len * 18.0f;
 
             Vector2 mid{(p1.x + p2.x)/2.0f + nx, (p1.y + p2.y)/2.0f + ny};
 
@@ -573,15 +574,38 @@ void EvacPlannerApp::drawCanvas() {
                 DrawRectangleRoundedLines(tagRect, 0.35f, 4, 1.2f, Color{240, 70, 70, 255});
                 drawText("BLOCKED", mid.x - txtW/2.0f, mid.y - 8.0f, 15, Color{250, 120, 120, 255});
             } else {
+                float radiusHeat = graph_.getEdgeHazardRadiusInfluence(uId, edge.toNode);
+                float totalRisk = std::min(1.0f, edge.hazardLevel + radiusHeat + edge.congestion);
+
                 std::stringstream ss;
                 ss << std::fixed << std::setprecision(0) << edge.distance << "m";
+                if (totalRisk > 0.2f) {
+                    ss << " (+Danger)";
+                } else if (totalRisk > 0.05f) {
+                    ss << " (+Risk)";
+                }
                 std::string dStr = ss.str();
 
                 float txtW = measureTextWidth(dStr.c_str(), 15);
                 Rectangle pillRect{std::floor(mid.x - txtW/2.0f - 10.0f), std::floor(mid.y - 14.0f), txtW + 20.0f, 28.0f};
-                DrawRectangleRounded(pillRect, 0.35f, 4, Color{15, 20, 30, 255});
-                DrawRectangleRoundedLines(pillRect, 0.35f, 4, 1.2f, Color{70, 95, 125, 255});
-                drawText(dStr.c_str(), mid.x - txtW/2.0f, mid.y - 8.0f, 15, Color{210, 230, 255, 255});
+
+                Color pillBg = Color{15, 20, 30, 255};
+                Color pillBorder = Color{70, 95, 125, 255};
+                Color pillText = Color{210, 230, 255, 255};
+
+                if (totalRisk > 0.4f) {
+                    pillBg = Color{48, 14, 14, 255};
+                    pillBorder = Color{240, 75, 75, 255};
+                    pillText = Color{255, 130, 130, 255};
+                } else if (totalRisk > 0.05f) {
+                    pillBg = Color{45, 30, 12, 255};
+                    pillBorder = Color{235, 145, 45, 255};
+                    pillText = Color{255, 200, 110, 255};
+                }
+
+                DrawRectangleRounded(pillRect, 0.35f, 4, pillBg);
+                DrawRectangleRoundedLines(pillRect, 0.35f, 4, 1.2f, pillBorder);
+                drawText(dStr.c_str(), mid.x - txtW/2.0f, mid.y - 8.0f, 15, pillText);
             }
         }
     }
