@@ -1,4 +1,4 @@
-# Disaster Evacuation Route Planner 🚨🗺️
+# Disaster Evacuation Route Planner
 
 A modern, high-performance C++ GUI application for emergency evacuation pathfinding, multi-agent crowd flow simulation, dynamic flood propagation, and real-time algorithm performance benchmarking. 
 
@@ -7,22 +7,10 @@ Built for the **SIH Disaster Management** theme using **C++17**, **Raylib 5.0**,
 ![C++](https://img.shields.io/badge/C%2B%2B-17-blue.svg)
 ![Build](https://img.shields.io/badge/Build-CMake%20%7C%20MinGW-green.svg)
 ![GUI](https://img.shields.io/badge/GUI-Raylib%205.0-orange.svg)
-![Status](https://img.shields.io/badge/Status-Live%20Executable-success.svg)
 
 ---
 
-## 🖥️ Application Preview & Downloads
-
-| Item | Direct Link |
-| :--- | :--- |
-| **🚀 Pre-Compiled Executable** | [📥 Download DisasterEvacPlanner.exe (Windows 64-bit)](https://github.com/Drago-techie/Disaster_Evacuation_Planner/raw/main/build/DisasterEvacPlanner.exe) |
-| **📦 Full Source Repository** | [🌐 https://github.com/Drago-techie/Disaster_Evacuation_Planner](https://github.com/Drago-techie/Disaster_Evacuation_Planner) |
-
-> **Quick Run**: Download `DisasterEvacPlanner.exe` from the link above and run directly on Windows 10/11 (no installation or external libraries required).
-
----
-
-## 🌟 Key Features
+## Key Features
 
 1. **Modular Graph Architecture (Adjacency List)**:
    - Dynamic Nodes representing *Evacuee Spawns*, *Safe Zone Exits*, *Hazard/Smoke Zones*, and *Blocked Impassable Routes*.
@@ -47,7 +35,7 @@ Built for the **SIH Disaster Management** theme using **C++17**, **Raylib 5.0**,
 
 ---
 
-## 🛠️ Build & Installation
+## Build & Installation
 
 ### Requirements
 - **C++17 Compiler** (GCC / MinGW-w64 or MSVC)
@@ -73,7 +61,7 @@ cmake --build build
 
 ---
 
-## 📁 Repository Structure
+## Repository Structure
 
 ```text
 Disaster_Evacuation_Planner/
