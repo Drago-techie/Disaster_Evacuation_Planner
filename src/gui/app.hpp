@@ -21,6 +21,17 @@ enum class ToolMode {
     DeleteEdge
 };
 
+struct EvacueeAgent {
+    int id;
+    int algorithmType; // 0 = BFS (Cyan), 1 = Greedy (Purple), 2 = Dijkstra (Lime)
+    std::vector<int> pathNodes;
+    size_t currentSegmentIndex = 0;
+    float progress = 0.0f; // 0.0 to 1.0 along current edge segment
+    float baseSpeed = 130.0f; // Base pixels per second
+    Color color;
+    float lineOffset = 0.0f;
+};
+
 class EvacPlannerApp {
 private:
     Graph graph_;
@@ -40,6 +51,14 @@ private:
     bool showBFS_ = true;
     bool showGreedy_ = true;
     bool showDijkstra_ = true;
+
+    // Multi-Agent Evacuation Flow Simulator State
+    bool showLiveAgentStream_ = true;
+    std::vector<EvacueeAgent> activeAgents_;
+    float spawnTimer_ = 0.0f;
+    float spawnIntervalSec_ = 0.30f; // Spawn a new crowd wave every 300ms
+    int totalAgentsEvacuated_ = 0;
+    int nextAgentId_ = 1;
 
     // Step-by-Step Animation State Machine
     bool isAnimating_ = false;

@@ -29,9 +29,11 @@ void EvacPlannerApp::solveAll() {
 
     currentAnimStep_ = 0;
     animTimer_ = 0.0f;
+    activeAgents_.clear();
+    spawnTimer_ = 0.0f;
 
     if (bfsResult_.found && greedyResult_.found) {
-        statusMessage_ = "Computed evacuation routes for Evacuee Node " + std::to_string(selectedStartSpawnId_) + ". Benchmark HUD updated.";
+        statusMessage_ = "Computed evacuation routes for Evacuee Node " + std::to_string(selectedStartSpawnId_) + ". Simulation engine ready.";
     } else if (!bfsResult_.found && !greedyResult_.found) {
         std::vector<int> allSafe = graph_.getSafeZoneIds();
         std::vector<int> validSafe = graph_.getValidSafeZoneIds();
@@ -128,6 +130,76 @@ void EvacPlannerApp::update() {
                 isAnimating_ = false;
                 statusMessage_ = "Step-by-step playback simulation complete.";
             }
+        }
+    }
+
+    // Multi-Agent Evacuation Flow Physics Loop
+    if (showLiveAgentStream_) {
+        spawnTimer_ += dt;
+        if (spawnTimer_ >= spawnIntervalSec_) {
+            spawnTimer_ = 0.0f;
+
+            auto spawnAgent = [&](const PathResult& res, int algoType, Color col, float lineOffset) {
+                if (res.found && res.pathNodes.size() >= 2) {
+                    EvacueeAgent agent;
+                    agent.id = nextAgentId_++;
+                    agent.algorithmType = algoType;
+                    agent.pathNodes = res.pathNodes;
+                    agent.currentSegmentIndex = 0;
+                    agent.progress = 0.0f;
+                    agent.baseSpeed = 135.0f;
+                    agent.color = col;
+                    agent.lineOffset = lineOffset;
+                    activeAgents_.push_back(agent);
+                }
+            };
+
+            if (showBFS_) spawnAgent(bfsResult_, 0, Color{0, 220, 255, 255}, -7.0f);
+            if (showGreedy_) spawnAgent(greedyResult_, 1, Color{220, 90, 255, 255}, 0.0f);
+            if (showDijkstra_) spawnAgent(dijkstraResult_, 2, Color{90, 240, 100, 255}, 7.0f);
+        }
+
+        // Update particle movements along edge corridors
+        for (auto it = activeAgents_.begin(); it != activeAgents_.end(); ) {
+            EvacueeAgent& agent = *it;
+            if (agent.currentSegmentIndex >= agent.pathNodes.size() - 1) {
+                totalAgentsEvacuated_++;
+                it = activeAgents_.erase(it);
+                continue;
+            }
+
+            int uId = agent.pathNodes[agent.currentSegmentIndex];
+            int vId = agent.pathNodes[agent.currentSegmentIndex + 1];
+
+            const Node* u = graph_.getNode(uId);
+            const Node* v = graph_.getNode(vId);
+
+            if (!u || !v) {
+                it = activeAgents_.erase(it);
+                continue;
+            }
+
+            float dist = u->pos.distanceTo(v->pos);
+            if (dist <= 0.0f) dist = 1.0f;
+
+            float radiusHeat = graph_.getEdgeHazardRadiusInfluence(uId, vId);
+            float totalRisk = std::min(1.0f, radiusHeat * 1.5f);
+
+            // Speed slows down on congested/hazardous corridors
+            float moveSpeed = agent.baseSpeed / (1.0f + 1.8f * totalRisk);
+
+            agent.progress += (moveSpeed * dt) / dist;
+
+            if (agent.progress >= 1.0f) {
+                agent.progress = 0.0f;
+                agent.currentSegmentIndex++;
+                if (agent.currentSegmentIndex >= agent.pathNodes.size() - 1) {
+                    totalAgentsEvacuated_++;
+                    it = activeAgents_.erase(it);
+                    continue;
+                }
+            }
+            ++it;
         }
     }
 
@@ -335,20 +407,32 @@ void EvacPlannerApp::drawSidebar() {
         statusMessage_ = "Reset search playback to initial state.";
     }
 
+    y += 38;
+    // Multi-Agent Flow Particle Stream Toggle
+    Rectangle agentStreamRect = {16.0f, (float)y, 228.0f, 32.0f};
+    DrawRectangleRounded(agentStreamRect, 0.2f, 4, showLiveAgentStream_ ? Color{30, 95, 150, 255} : Color{32, 40, 54, 255});
+    DrawRectangleRoundedLines(agentStreamRect, 0.2f, 4, 1.2f, showLiveAgentStream_ ? Color{100, 200, 255, 255} : Color{70, 85, 110, 255});
+    std::string agentBtnText = showLiveAgentStream_ ? "Live Crowds: ON" : "Live Crowds: OFF";
+    drawText(agentBtnText.c_str(), 32, y + 7, 14, WHITE);
+    if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && CheckCollisionPointRec(GetMousePosition(), agentStreamRect)) {
+        showLiveAgentStream_ = !showLiveAgentStream_;
+        if (!showLiveAgentStream_) activeAgents_.clear();
+    }
+
     y += 40;
     DrawLine(18, y, 242, y, Color{45, 56, 75, 255});
-    y += 12;
+    y += 10;
 
     drawText("PRESET SCENARIOS", 18, y, 17, Color{215, 230, 252, 255});
     y += 24;
 
-    Rectangle preset1 = {16.0f, (float)y, 228.0f, 36.0f};
-    Rectangle preset2 = {16.0f, (float)y + 42.0f, 228.0f, 36.0f};
-    Rectangle preset3 = {16.0f, (float)y + 84.0f, 228.0f, 36.0f};
+    Rectangle preset1 = {16.0f, (float)y, 228.0f, 34.0f};
+    Rectangle preset2 = {16.0f, (float)y + 40.0f, 228.0f, 34.0f};
+    Rectangle preset3 = {16.0f, (float)y + 80.0f, 228.0f, 34.0f};
 
     DrawRectangleRounded(preset1, 0.2f, 4, Color{36, 48, 66, 255});
     DrawRectangleRoundedLines(preset1, 0.2f, 4, 1.0f, Color{70, 88, 112, 255});
-    drawText("Building Floor Plan", 30, y + 8, 15, WHITE);
+    drawText("Building Floor Plan", 30, y + 7, 15, WHITE);
     if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && CheckCollisionPointRec(GetMousePosition(), preset1)) {
         PresetScenarios::loadHighRiseFloorPlan(graph_);
         auto spawns = graph_.getSpawnIds();
@@ -358,7 +442,7 @@ void EvacPlannerApp::drawSidebar() {
 
     DrawRectangleRounded(preset2, 0.2f, 4, Color{36, 48, 66, 255});
     DrawRectangleRoundedLines(preset2, 0.2f, 4, 1.0f, Color{70, 88, 112, 255});
-    drawText("City Flash Flood", 30, y + 50, 15, WHITE);
+    drawText("City Flash Flood", 30, y + 47, 15, WHITE);
     if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && CheckCollisionPointRec(GetMousePosition(), preset2)) {
         PresetScenarios::loadCityFlashFlood(graph_);
         auto spawns = graph_.getSpawnIds();
@@ -368,7 +452,7 @@ void EvacPlannerApp::drawSidebar() {
 
     DrawRectangleRounded(preset3, 0.2f, 4, Color{36, 48, 66, 255});
     DrawRectangleRoundedLines(preset3, 0.2f, 4, 1.0f, Color{70, 88, 112, 255});
-    drawText("Stadium Arena Plan", 30, y + 92, 15, WHITE);
+    drawText("Stadium Arena Plan", 30, y + 87, 15, WHITE);
     if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && CheckCollisionPointRec(GetMousePosition(), preset3)) {
         PresetScenarios::loadStadiumEvacuation(graph_);
         auto spawns = graph_.getSpawnIds();
@@ -376,16 +460,16 @@ void EvacPlannerApp::drawSidebar() {
         solveAll();
     }
 
-    y += 128;
+    y += 122;
     DrawLine(18, y, 242, y, Color{45, 56, 75, 255});
-    y += 10;
+    y += 8;
 
     drawText("HAZARD CONTROLS", 18, y, 17, Color{215, 230, 252, 255});
-    y += 24;
+    y += 22;
 
-    Rectangle btnClear = {16.0f, (float)y, 228.0f, 36.0f};
+    Rectangle btnClear = {16.0f, (float)y, 228.0f, 34.0f};
     DrawRectangleRounded(btnClear, 0.2f, 4, Color{185, 45, 45, 255});
-    drawText("Clear All Blockages", 34, y + 8, 15, WHITE);
+    drawText("Clear All Blockages", 34, y + 7, 15, WHITE);
     if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && CheckCollisionPointRec(GetMousePosition(), btnClear)) {
         for (auto& pair : const_cast<std::unordered_map<int, std::vector<Edge>>&>(graph_.getAdjacencyList())) {
             for (auto& edge : pair.second) {
@@ -401,12 +485,12 @@ void EvacPlannerApp::drawSidebar() {
         solveAll();
     }
 
-    y += 44;
+    y += 40;
     DrawLine(18, y, 242, y, Color{45, 56, 75, 255});
-    y += 10;
+    y += 8;
 
     drawText("ALGORITHM OVERLAYS", 18, y, 17, Color{215, 230, 252, 255});
-    y += 24;
+    y += 22;
 
     auto drawToggle = [&](const char* label, bool& val, Color c) {
         Rectangle r = {18.0f, (float)y, 18.0f, 18.0f};
@@ -416,7 +500,7 @@ void EvacPlannerApp::drawSidebar() {
         if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && CheckCollisionPointRec(GetMousePosition(), Rectangle{18.0f, (float)y, 220.0f, 22.0f})) {
             val = !val;
         }
-        y += 26;
+        y += 24;
     };
 
     drawToggle("BFS Shortest Hop (Cyan)", showBFS_, Color{0, 210, 255, 255});
@@ -425,22 +509,21 @@ void EvacPlannerApp::drawSidebar() {
 
     y += 4;
     DrawLine(18, y, 242, y, Color{45, 56, 75, 255});
-    y += 10;
+    y += 8;
 
     drawText("GRAPH LEGEND", 18, y, 17, Color{215, 230, 252, 255});
-    y += 24;
-    DrawCircle(28, y + 7, 8, Color{240, 140, 30, 255}); drawText("Start Evacuees", 46, y, 15, Color{225, 235, 250, 255}); y += 22;
-    DrawCircle(28, y + 7, 8, Color{40, 200, 100, 255}); drawText("Safe Zone Exit", 46, y, 15, Color{225, 235, 250, 255}); y += 22;
-    DrawCircle(28, y + 7, 8, Color{220, 60, 60, 255}); drawText("Hazard / Smoke", 46, y, 15, Color{225, 235, 250, 255}); y += 22;
-    DrawCircle(28, y + 7, 8, Color{70, 75, 85, 255}); drawText("Blocked Route", 46, y, 15, Color{225, 235, 250, 255}); y += 22;
+    y += 22;
+    DrawCircle(28, y + 6, 7, Color{240, 140, 30, 255}); drawText("Start Evacuees", 46, y, 14, Color{225, 235, 250, 255}); y += 18;
+    DrawCircle(28, y + 6, 7, Color{40, 200, 100, 255}); drawText("Safe Zone Exit", 46, y, 14, Color{225, 235, 250, 255}); y += 18;
+    DrawCircle(28, y + 6, 7, Color{220, 60, 60, 255}); drawText("Hazard / Smoke", 46, y, 14, Color{225, 235, 250, 255}); y += 18;
+    DrawCircle(28, y + 6, 7, Color{70, 75, 85, 255}); drawText("Blocked Route", 46, y, 14, Color{225, 235, 250, 255}); y += 18;
 
     // Controls hint box
-    DrawRectangleRounded(Rectangle{12.0f, 676.0f, 236.0f, 106.0f}, 0.15f, 4, Color{18, 23, 32, 255});
-    drawText("HINT / CONTROLS:", 20, 684, 14, Color{255, 205, 110, 255});
-    drawText("- Left-Click: Select/Drag nodes", 20, 704, 13, Color{200, 212, 230, 255});
-    drawText("- Right-Click Node: Cycle Hazard", 20, 722, 13, Color{200, 212, 230, 255});
-    drawText("- Del Key: Delete hovered node", 20, 740, 13, Color{200, 212, 230, 255});
-    drawText(("- Selected Start: Node " + std::to_string(selectedStartSpawnId_)).c_str(), 20, 758, 13, Color{100, 220, 255, 255});
+    DrawRectangleRounded(Rectangle{12.0f, 684.0f, 236.0f, 98.0f}, 0.15f, 4, Color{18, 23, 32, 255});
+    drawText("SIMULATION TELEMETRY:", 20, 690, 13, Color{255, 205, 110, 255});
+    drawText(("- Evacuated: " + std::to_string(totalAgentsEvacuated_) + " agents").c_str(), 20, 708, 13, Color{60, 230, 140, 255});
+    drawText(("- Active Streams: " + std::to_string(activeAgents_.size()) + " agents").c_str(), 20, 726, 13, Color{200, 212, 230, 255});
+    drawText(("- Selected Start: Node " + std::to_string(selectedStartSpawnId_)).c_str(), 20, 744, 13, Color{100, 220, 255, 255});
 }
 
 // Side-by-side Subway Transit Line renderer for distinct parallel multi-algorithm overlay lines
@@ -567,6 +650,41 @@ void EvacPlannerApp::drawCanvas() {
         if (showDijkstra_ && dijkstraResult_.found) drawPathLine(dijkstraResult_.pathNodes, 7.0f, 80, 235, 90);
         if (showGreedy_ && greedyResult_.found) drawPathLine(greedyResult_.pathNodes, 0.0f, 210, 85, 255);
         if (showBFS_ && bfsResult_.found) drawPathLine(bfsResult_.pathNodes, -7.0f, 0, 210, 255);
+    }
+
+    // 2.5 Render Multi-Agent Evacuee Crowd Particles Moving along corridors
+    if (showLiveAgentStream_) {
+        for (const auto& agent : activeAgents_) {
+            if (agent.currentSegmentIndex < agent.pathNodes.size() - 1) {
+                int uId = agent.pathNodes[agent.currentSegmentIndex];
+                int vId = agent.pathNodes[agent.currentSegmentIndex + 1];
+
+                const Node* u = graph_.getNode(uId);
+                const Node* v = graph_.getNode(vId);
+
+                if (u && v) {
+                    float dx = v->pos.x - u->pos.x;
+                    float dy = v->pos.y - u->pos.y;
+                    float len = std::sqrt(dx * dx + dy * dy);
+
+                    float nx = 0.0f;
+                    float ny = 0.0f;
+                    if (len > 0.0f) {
+                        nx = -dy / len * agent.lineOffset;
+                        ny = dx / len * agent.lineOffset;
+                    }
+
+                    Vector2 basePos{
+                        u->pos.x + agent.progress * (v->pos.x - u->pos.x) + nx,
+                        u->pos.y + agent.progress * (v->pos.y - u->pos.y) + ny
+                    };
+
+                    // Draw glowing multi-agent crowd particle
+                    DrawCircleV(basePos, 6.5f, agent.color);
+                    DrawCircleLines((int)basePos.x, (int)basePos.y, 6.5f, Color{255, 255, 255, 220});
+                }
+            }
+        }
     }
 
     // 3. Draw Nodes (Circles)
@@ -736,7 +854,6 @@ void EvacPlannerApp::drawMetricsOverlay() {
     drawMetricCard(overlayX + 370, overlayY + 38, greedyResult_, Color{210, 85, 255, 255});
     drawMetricCard(overlayX + 725, overlayY + 38, dijkstraResult_, Color{80, 235, 90, 255});
 }
-
 
 void EvacPlannerApp::draw() {
     BeginDrawing();
