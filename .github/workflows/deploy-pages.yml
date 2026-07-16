@@ -7,18 +7,9 @@ on:
 
 permissions:
   contents: write
-  pages: write
-  id-token: write
-
-concurrency:
-  group: "pages"
-  cancel-in-progress: true
 
 jobs:
   build-and-deploy:
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Source
@@ -41,20 +32,9 @@ jobs:
         run: |
           mv build-web/DisasterEvacPlanner.html build-web/index.html
 
-      # Deployment Path 1: Push built Wasm HTML5 assets directly to gh-pages branch
       - name: Deploy to gh-pages branch
         uses: peaceiris/actions-gh-pages@v3
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: build-web
           force_orphan: true
-
-      # Deployment Path 2: Deploy artifact for GitHub Actions Pages pipeline
-      - name: Upload Pages Artifact
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: build-web
-
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
