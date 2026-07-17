@@ -200,6 +200,28 @@ public:
         return false;
     }
 
+    bool isEdgeBlocked(int u, int v) const {
+        auto it = adj_.find(u);
+        if (it != adj_.end()) {
+            for (const auto& e : it->second) {
+                if (e.toNode == v) return e.isBlocked;
+            }
+        }
+        return false;
+    }
+
+    void setEdgeBlocked(int u, int v, bool blocked) {
+        auto setInVec = [blocked](std::vector<Edge>& edges, int targetV) {
+            for (auto& e : edges) {
+                if (e.toNode == targetV) {
+                    e.isBlocked = blocked;
+                }
+            }
+        };
+        if (adj_.find(u) != adj_.end()) setInVec(adj_[u], v);
+        if (adj_.find(v) != adj_.end()) setInVec(adj_[v], u);
+    }
+
     void toggleEdgeBlock(int u, int v) {
         auto toggleInVec = [](std::vector<Edge>& edges, int targetV) {
             for (auto& e : edges) {

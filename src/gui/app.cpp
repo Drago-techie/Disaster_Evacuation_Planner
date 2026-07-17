@@ -292,7 +292,7 @@ void EvacPlannerApp::update() {
                 if (hoveredNodeId_ != -1) {
                     if (edgeStartNodeId_ == -1) {
                         edgeStartNodeId_ = hoveredNodeId_;
-                        statusMessage_ = "Delete Edge: Select second node to un-link corridor.";
+                        statusMessage_ = "Delete Edge: Select second node to un-link corridor edge.";
                     } else if (edgeStartNodeId_ != hoveredNodeId_) {
                         graph_.removeEdge(edgeStartNodeId_, hoveredNodeId_);
                         edgeStartNodeId_ = -1;
@@ -301,13 +301,21 @@ void EvacPlannerApp::update() {
                     }
                 }
             } else if (currentTool_ == ToolMode::ToggleBlock) {
+                // Add Blockage Tool: Blocks corridor edge between two nodes
                 if (hoveredNodeId_ != -1) {
-                    Node* n = graph_.getNode(hoveredNodeId_);
-                    if (n) {
-                        n->type = (n->type == NodeType::Blocked) ? NodeType::Normal : NodeType::Blocked;
+                    if (edgeStartNodeId_ == -1) {
+                        edgeStartNodeId_ = hoveredNodeId_;
+                        statusMessage_ = "Add Blockage: Select second node to toggle corridor edge blockage.";
+                    } else if (edgeStartNodeId_ != hoveredNodeId_) {
+                        bool currentlyBlocked = graph_.isEdgeBlocked(edgeStartNodeId_, hoveredNodeId_);
+                        graph_.setEdgeBlocked(edgeStartNodeId_, hoveredNodeId_, !currentlyBlocked);
+                        int uId = edgeStartNodeId_;
+                        int vId = hoveredNodeId_;
+                        edgeStartNodeId_ = -1;
                         solveAll();
-                        statusMessage_ = (n->type == NodeType::Blocked) ? 
-                            ("Added blockage to Node " + n->name + ".") : ("Removed blockage from Node " + n->name + ".");
+                        statusMessage_ = currentlyBlocked ? 
+                            ("Unblocked corridor edge between Node " + std::to_string(uId) + " and Node " + std::to_string(vId) + ".") :
+                            ("Blocked corridor edge between Node " + std::to_string(uId) + " and Node " + std::to_string(vId) + ".");
                     }
                 }
             } else if (hoveredNodeId_ != -1) {
@@ -377,8 +385,8 @@ void EvacPlannerApp::update() {
 
 void EvacPlannerApp::drawHeader() {
     DrawRectangle(0, 0, 1380, 72, Color{22, 27, 36, 255});
-    drawText("DISASTER EVACUATION ROUTE PLANNER", 16, 10, 22, Color{250, 252, 255, 255});
-    drawText("C++ Graph Module | BFS vs. Greedy Search Benchmark Engine", 16, 40, 14, Color{180, 202, 230, 255});
+    drawText("DISASTER EVACUATION PLANNER", 16, 12, 20, Color{250, 252, 255, 255});
+    drawText("C++ Engine | Benchmark Module", 16, 40, 13, Color{180, 202, 230, 255});
 
     struct ButtonDef { const char* label; ToolMode mode; Color highlightColor; };
     ButtonDef buttons[] = {
@@ -392,16 +400,16 @@ void EvacPlannerApp::drawHeader() {
         {"Del Edge", ToolMode::DeleteEdge, Color{210, 50, 50, 255}}
     };
 
-    int startX = 330;
+    int startX = 390;
     for (int i = 0; i < 8; i++) {
-        Rectangle btnRect = {(float)(startX + i * 128), 12.0f, 122.0f, 48.0f};
+        Rectangle btnRect = {(float)(startX + i * 120), 12.0f, 114.0f, 48.0f};
         bool active = (currentTool_ == buttons[i].mode);
         Color bg = active ? buttons[i].highlightColor : Color{34, 44, 60, 255};
         DrawRectangleRounded(btnRect, 0.25f, 4, bg);
         DrawRectangleRoundedLines(btnRect, 0.25f, 4, 1.5f, active ? Color{255, 255, 255, 255} : Color{70, 85, 110, 255});
         
-        float txtW = measureTextWidth(buttons[i].label, 15);
-        drawText(buttons[i].label, btnRect.x + (btnRect.width - txtW)/2.0f, btnRect.y + 16.0f, 15, WHITE);
+        float txtW = measureTextWidth(buttons[i].label, 14);
+        drawText(buttons[i].label, btnRect.x + (btnRect.width - txtW)/2.0f, btnRect.y + 16.0f, 14, WHITE);
 
         if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && CheckCollisionPointRec(GetMousePosition(), btnRect)) {
             currentTool_ = buttons[i].mode;
@@ -415,16 +423,16 @@ void EvacPlannerApp::drawSidebar() {
     DrawRectangle(0, 72, 260, 768, Color{26, 32, 44, 255});
     DrawLine(260, 72, 260, 840, Color{45, 56, 75, 255});
 
-    int y = 80;
-    drawText("SIMULATION PLAYBACK", 18, y, 17, Color{100, 200, 255, 255});
-    y += 24;
+    int y = 78;
+    drawText("SIMULATION PLAYBACK", 18, y, 15, Color{100, 200, 255, 255});
+    y += 20;
 
     // Play/Pause, Step Forward & Reset Controls
-    Rectangle btnPlay = {16.0f, (float)y, 110.0f, 38.0f};
-    Rectangle btnStep = {134.0f, (float)y, 110.0f, 38.0f};
+    Rectangle btnPlay = {16.0f, (float)y, 110.0f, 34.0f};
+    Rectangle btnStep = {134.0f, (float)y, 110.0f, 34.0f};
 
     DrawRectangleRounded(btnPlay, 0.2f, 4, isAnimating_ ? Color{210, 140, 30, 255} : Color{40, 160, 90, 255});
-    drawText(isAnimating_ ? "Pause" : "Play Search", isAnimating_ ? 42 : 26, y + 9, 15, WHITE);
+    drawText(isAnimating_ ? "Pause" : "Play Search", isAnimating_ ? 42 : 26, y + 8, 14, WHITE);
     if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && CheckCollisionPointRec(GetMousePosition(), btnPlay)) {
         isAnimating_ = !isAnimating_;
         size_t maxSteps = std::max({bfsResult_.steps.size(), greedyResult_.steps.size(), dijkstraResult_.steps.size()});
@@ -436,7 +444,7 @@ void EvacPlannerApp::drawSidebar() {
 
     DrawRectangleRounded(btnStep, 0.2f, 4, Color{45, 60, 82, 255});
     DrawRectangleRoundedLines(btnStep, 0.2f, 4, 1.0f, Color{80, 100, 130, 255});
-    drawText("Step Forward", 144, y + 9, 15, WHITE);
+    drawText("Step Forward", 144, y + 8, 14, WHITE);
     if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && CheckCollisionPointRec(GetMousePosition(), btnStep)) {
         isAnimating_ = false;
         size_t maxSteps = std::max({bfsResult_.steps.size(), greedyResult_.steps.size(), dijkstraResult_.steps.size()});
@@ -448,16 +456,16 @@ void EvacPlannerApp::drawSidebar() {
         statusMessage_ = "Stepped to Step " + std::to_string(currentAnimStep_) + " / " + std::to_string(maxSteps);
     }
 
-    y += 44;
+    y += 38;
     // Speed Multiplier Toggle (0.5x -> 0.75x -> 1x -> 2x) & Reset Step Buttons
-    Rectangle speedRect = {16.0f, (float)y, 110.0f, 30.0f};
-    Rectangle resetRect = {134.0f, (float)y, 110.0f, 30.0f};
+    Rectangle speedRect = {16.0f, (float)y, 110.0f, 28.0f};
+    Rectangle resetRect = {134.0f, (float)y, 110.0f, 28.0f};
 
     DrawRectangleRounded(speedRect, 0.2f, 4, Color{32, 40, 54, 255});
     std::stringstream speedSs;
     speedSs << "Speed: " << std::fixed << std::setprecision((animSpeedMultiplier_ == 1.0f || animSpeedMultiplier_ == 2.0f) ? 1 : 2) << animSpeedMultiplier_ << "x";
     std::string speedStr = speedSs.str();
-    drawText(speedStr.c_str(), 24, y + 6, 14, Color{190, 215, 240, 255});
+    drawText(speedStr.c_str(), 24, y + 5, 13, Color{190, 215, 240, 255});
     if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && CheckCollisionPointRec(GetMousePosition(), speedRect)) {
         if (animSpeedMultiplier_ == 0.5f) animSpeedMultiplier_ = 0.75f;
         else if (animSpeedMultiplier_ == 0.75f) animSpeedMultiplier_ = 1.0f;
@@ -467,39 +475,39 @@ void EvacPlannerApp::drawSidebar() {
     }
 
     DrawRectangleRounded(resetRect, 0.2f, 4, Color{32, 40, 54, 255});
-    drawText("Reset Step", 152, y + 6, 14, Color{255, 180, 100, 255});
+    drawText("Reset Step", 152, y + 5, 13, Color{255, 180, 100, 255});
     if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && CheckCollisionPointRec(GetMousePosition(), resetRect)) {
         isAnimating_ = false;
         currentAnimStep_ = 0;
         statusMessage_ = "Reset search playback to initial state.";
     }
 
-    y += 38;
+    y += 34;
     // Multi-Agent Flow Particle Stream Toggle
-    Rectangle agentStreamRect = {16.0f, (float)y, 228.0f, 32.0f};
+    Rectangle agentStreamRect = {16.0f, (float)y, 228.0f, 28.0f};
     DrawRectangleRounded(agentStreamRect, 0.2f, 4, showLiveAgentStream_ ? Color{30, 95, 150, 255} : Color{32, 40, 54, 255});
     DrawRectangleRoundedLines(agentStreamRect, 0.2f, 4, 1.2f, showLiveAgentStream_ ? Color{100, 200, 255, 255} : Color{70, 85, 110, 255});
     std::string agentBtnText = showLiveAgentStream_ ? "Live Crowds: ON" : "Live Crowds: OFF";
-    drawText(agentBtnText.c_str(), 32, y + 7, 14, WHITE);
+    drawText(agentBtnText.c_str(), 32, y + 5, 13, WHITE);
     if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && CheckCollisionPointRec(GetMousePosition(), agentStreamRect)) {
         showLiveAgentStream_ = !showLiveAgentStream_;
         if (!showLiveAgentStream_) activeAgents_.clear();
     }
 
-    y += 40;
+    y += 34;
     DrawLine(18, y, 242, y, Color{45, 56, 75, 255});
-    y += 10;
+    y += 6;
 
-    drawText("PRESET SCENARIOS", 18, y, 17, Color{215, 230, 252, 255});
-    y += 24;
+    drawText("PRESET SCENARIOS", 18, y, 15, Color{215, 230, 252, 255});
+    y += 20;
 
-    Rectangle preset1 = {16.0f, (float)y, 228.0f, 34.0f};
-    Rectangle preset2 = {16.0f, (float)y + 40.0f, 228.0f, 34.0f};
-    Rectangle preset3 = {16.0f, (float)y + 80.0f, 228.0f, 34.0f};
+    Rectangle preset1 = {16.0f, (float)y, 228.0f, 30.0f};
+    Rectangle preset2 = {16.0f, (float)y + 34.0f, 228.0f, 30.0f};
+    Rectangle preset3 = {16.0f, (float)y + 68.0f, 228.0f, 30.0f};
 
     DrawRectangleRounded(preset1, 0.2f, 4, Color{36, 48, 66, 255});
     DrawRectangleRoundedLines(preset1, 0.2f, 4, 1.0f, Color{70, 88, 112, 255});
-    drawText("Building Floor Plan", 30, y + 7, 15, WHITE);
+    drawText("Building Floor Plan", 30, y + 6, 14, WHITE);
     if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && CheckCollisionPointRec(GetMousePosition(), preset1)) {
         PresetScenarios::loadHighRiseFloorPlan(graph_);
         isFlashFloodScenario_ = false;
@@ -513,7 +521,7 @@ void EvacPlannerApp::drawSidebar() {
 
     DrawRectangleRounded(preset2, 0.2f, 4, isFlashFloodScenario_ ? Color{40, 95, 160, 255} : Color{36, 48, 66, 255});
     DrawRectangleRoundedLines(preset2, 0.2f, 4, 1.0f, isFlashFloodScenario_ ? Color{100, 200, 255, 255} : Color{70, 88, 112, 255});
-    drawText("City Flash Flood 🌊", 30, y + 47, 15, WHITE);
+    drawText("City Flash Flood 🌊", 30, y + 40, 14, WHITE);
     if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && CheckCollisionPointRec(GetMousePosition(), preset2)) {
         PresetScenarios::loadCityFlashFlood(graph_);
         isFlashFloodScenario_ = true;
@@ -527,7 +535,7 @@ void EvacPlannerApp::drawSidebar() {
 
     DrawRectangleRounded(preset3, 0.2f, 4, Color{36, 48, 66, 255});
     DrawRectangleRoundedLines(preset3, 0.2f, 4, 1.0f, Color{70, 88, 112, 255});
-    drawText("Stadium Arena Plan", 30, y + 87, 15, WHITE);
+    drawText("Stadium Arena Plan", 30, y + 74, 14, WHITE);
     if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && CheckCollisionPointRec(GetMousePosition(), preset3)) {
         PresetScenarios::loadStadiumEvacuation(graph_);
         isFlashFloodScenario_ = false;
@@ -539,16 +547,16 @@ void EvacPlannerApp::drawSidebar() {
         solveAll();
     }
 
-    y += 122;
+    y += 104;
     DrawLine(18, y, 242, y, Color{45, 56, 75, 255});
-    y += 8;
+    y += 6;
 
     // Slow Progressive Flash Flood Controls (Rendered exclusively for Flash Flood scenario)
     if (isFlashFloodScenario_) {
-        drawText("FLOOD PROPAGATION (3 MIN MAX)", 18, y, 15, Color{100, 200, 255, 255});
-        y += 22;
+        drawText("FLOOD PROPAGATION (3 MIN MAX)", 18, y, 14, Color{100, 200, 255, 255});
+        y += 18;
 
-        Rectangle floodToggleRect = {16.0f, (float)y, 228.0f, 32.0f};
+        Rectangle floodToggleRect = {16.0f, (float)y, 228.0f, 28.0f};
         DrawRectangleRounded(floodToggleRect, 0.2f, 4, isFloodSpreadingActive_ ? Color{200, 75, 30, 255} : Color{32, 40, 54, 255});
         DrawRectangleRoundedLines(floodToggleRect, 0.2f, 4, 1.2f, isFloodSpreadingActive_ ? Color{255, 160, 100, 255} : Color{70, 85, 110, 255});
         
@@ -560,35 +568,36 @@ void EvacPlannerApp::drawSidebar() {
         floodTxtSs << (isFloodSpreadingActive_ ? "Slow Flood: ON (" : "Slow Flood: OFF (") << remM << "m " << remS << "s)";
         std::string floodTxt = floodTxtSs.str();
 
-        drawText(floodTxt.c_str(), 24, y + 7, 13, WHITE);
+        drawText(floodTxt.c_str(), 24, y + 5, 13, WHITE);
         if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && CheckCollisionPointRec(GetMousePosition(), floodToggleRect)) {
             isFloodSpreadingActive_ = !isFloodSpreadingActive_;
             statusMessage_ = isFloodSpreadingActive_ ? "Slow 1-by-1 Flash Flood spreading active (3-min max cap)." : "Flash Flood spreading paused.";
         }
 
-        y += 38;
+        y += 32;
         DrawLine(18, y, 242, y, Color{45, 56, 75, 255});
-        y += 8;
+        y += 6;
     }
 
-    drawText("HAZARD CONTROLS", 18, y, 17, Color{215, 230, 252, 255});
-    y += 22;
+    drawText("HAZARD CONTROLS", 18, y, 15, Color{215, 230, 252, 255});
+    y += 18;
 
     // Add Blockage Tool Sidebar Shortcut Button (Available for ALL scenarios)
-    Rectangle btnBlockage = {16.0f, (float)y, 228.0f, 32.0f};
+    Rectangle btnBlockage = {16.0f, (float)y, 228.0f, 28.0f};
     bool isBlockToolActive = (currentTool_ == ToolMode::ToggleBlock);
     DrawRectangleRounded(btnBlockage, 0.2f, 4, isBlockToolActive ? Color{220, 100, 30, 255} : Color{45, 56, 75, 255});
     DrawRectangleRoundedLines(btnBlockage, 0.2f, 4, 1.2f, isBlockToolActive ? Color{255, 180, 100, 255} : Color{80, 100, 130, 255});
-    drawText("Add Blockage Tool", 38, y + 7, 14, WHITE);
+    drawText("Add Blockage Tool", 38, y + 5, 13, WHITE);
     if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && CheckCollisionPointRec(GetMousePosition(), btnBlockage)) {
         currentTool_ = ToolMode::ToggleBlock;
-        statusMessage_ = "Switched to Add Blockage Tool. Click any sector to set/remove impassable blockage.";
+        edgeStartNodeId_ = -1;
+        statusMessage_ = "Switched to Add Blockage Tool. Click two nodes to toggle corridor edge blockage.";
     }
 
-    y += 38;
-    Rectangle btnClear = {16.0f, (float)y, 228.0f, 34.0f};
+    y += 32;
+    Rectangle btnClear = {16.0f, (float)y, 228.0f, 28.0f};
     DrawRectangleRounded(btnClear, 0.2f, 4, Color{185, 45, 45, 255});
-    drawText("Clear All Blockages", 34, y + 7, 15, WHITE);
+    drawText("Clear All Blockages", 34, y + 5, 13, WHITE);
     if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && CheckCollisionPointRec(GetMousePosition(), btnClear)) {
         for (auto& pair : const_cast<std::unordered_map<int, std::vector<Edge>>&>(graph_.getAdjacencyList())) {
             for (auto& edge : pair.second) {
@@ -606,22 +615,22 @@ void EvacPlannerApp::drawSidebar() {
         solveAll();
     }
 
-    y += 40;
+    y += 34;
     DrawLine(18, y, 242, y, Color{45, 56, 75, 255});
-    y += 8;
+    y += 6;
 
-    drawText("ALGORITHM OVERLAYS", 18, y, 17, Color{215, 230, 252, 255});
-    y += 22;
+    drawText("ALGORITHM OVERLAYS", 18, y, 15, Color{215, 230, 252, 255});
+    y += 18;
 
     auto drawToggle = [&](const char* label, bool& val, Color c) {
-        Rectangle r = {18.0f, (float)y, 18.0f, 18.0f};
+        Rectangle r = {18.0f, (float)y, 16.0f, 16.0f};
         DrawRectangleRec(r, val ? c : Color{40, 48, 60, 255});
         DrawRectangleLinesEx(r, 1.5f, WHITE);
-        drawText(label, 46, y + 1, 15, WHITE);
-        if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && CheckCollisionPointRec(GetMousePosition(), Rectangle{18.0f, (float)y, 220.0f, 22.0f})) {
+        drawText(label, 44, y + 1, 13, WHITE);
+        if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && CheckCollisionPointRec(GetMousePosition(), Rectangle{18.0f, (float)y, 220.0f, 18.0f})) {
             val = !val;
         }
-        y += 24;
+        y += 20;
     };
 
     drawToggle("BFS Shortest Hop (Cyan)", showBFS_, Color{0, 210, 255, 255});
@@ -630,21 +639,22 @@ void EvacPlannerApp::drawSidebar() {
 
     y += 4;
     DrawLine(18, y, 242, y, Color{45, 56, 75, 255});
-    y += 8;
+    y += 6;
 
-    drawText("GRAPH LEGEND", 18, y, 17, Color{215, 230, 252, 255});
-    y += 22;
-    DrawCircle(28, y + 6, 7, Color{240, 140, 30, 255}); drawText("Start Evacuees", 46, y, 14, Color{225, 235, 250, 255}); y += 18;
-    DrawCircle(28, y + 6, 7, Color{40, 200, 100, 255}); drawText("Safe Zone Exit", 46, y, 14, Color{225, 235, 250, 255}); y += 18;
-    DrawCircle(28, y + 6, 7, Color{220, 60, 60, 255}); drawText("Hazard / Smoke", 46, y, 14, Color{225, 235, 250, 255}); y += 18;
-    DrawCircle(28, y + 6, 7, Color{70, 75, 85, 255}); drawText("Blocked Route", 46, y, 14, Color{225, 235, 250, 255}); y += 18;
+    drawText("GRAPH LEGEND", 18, y, 15, Color{215, 230, 252, 255});
+    y += 18;
+    DrawCircle(26, y + 5, 6, Color{240, 140, 30, 255}); drawText("Start Evacuees", 42, y, 13, Color{225, 235, 250, 255}); y += 16;
+    DrawCircle(26, y + 5, 6, Color{40, 200, 100, 255}); drawText("Safe Zone Exit", 42, y, 13, Color{225, 235, 250, 255}); y += 16;
+    DrawCircle(26, y + 5, 6, Color{220, 60, 60, 255}); drawText("Hazard / Smoke", 42, y, 13, Color{225, 235, 250, 255}); y += 16;
+    DrawCircle(26, y + 5, 6, Color{70, 75, 85, 255}); drawText("Blocked Route", 42, y, 13, Color{225, 235, 250, 255}); y += 16;
 
-    // Controls hint box
-    DrawRectangleRounded(Rectangle{12.0f, 684.0f, 236.0f, 98.0f}, 0.15f, 4, Color{18, 23, 32, 255});
-    drawText("SIMULATION TELEMETRY:", 20, 690, 13, Color{255, 205, 110, 255});
-    drawText(("- Evacuated: " + std::to_string(totalAgentsEvacuated_) + " agents").c_str(), 20, 708, 13, Color{60, 230, 140, 255});
-    drawText(("- Active Streams: " + std::to_string(activeAgents_.size()) + " agents").c_str(), 20, 726, 13, Color{200, 212, 230, 255});
-    drawText(("- Selected Start: Node " + std::to_string(selectedStartSpawnId_)).c_str(), 20, 744, 13, Color{100, 220, 255, 255});
+    // Simulation Telemetry box dynamically anchored below graph legend with zero overlap
+    float telemetryBoxY = std::max(680.0f, (float)y + 8.0f);
+    DrawRectangleRounded(Rectangle{12.0f, telemetryBoxY, 236.0f, 92.0f}, 0.15f, 4, Color{18, 23, 32, 255});
+    drawText("SIMULATION TELEMETRY:", 20, telemetryBoxY + 6.0f, 13, Color{255, 205, 110, 255});
+    drawText(("- Evacuated: " + std::to_string(totalAgentsEvacuated_) + " agents").c_str(), 20, telemetryBoxY + 24.0f, 13, Color{60, 230, 140, 255});
+    drawText(("- Active Streams: " + std::to_string(activeAgents_.size()) + " agents").c_str(), 20, telemetryBoxY + 42.0f, 13, Color{200, 212, 230, 255});
+    drawText(("- Selected Start: Node " + std::to_string(selectedStartSpawnId_)).c_str(), 20, telemetryBoxY + 60.0f, 13, Color{100, 220, 255, 255});
 }
 
 // Side-by-side Subway Transit Line renderer for distinct parallel multi-algorithm overlay lines
@@ -680,6 +690,15 @@ void EvacPlannerApp::drawCanvas() {
     }
     for (int gy = 72; gy < 570; gy += 40) {
         DrawLine(280, gy, 1370, gy, Color{32, 40, 54, 130});
+    }
+
+    // Highlight selected starting node for Add Edge / Add Blockage / Delete Edge tools
+    if (edgeStartNodeId_ != -1) {
+        const Node* sNode = graph_.getNode(edgeStartNodeId_);
+        if (sNode) {
+            float pulse = 5.0f * std::sin(timeVal * 6.0f);
+            DrawCircleLines((int)sNode->pos.x, (int)sNode->pos.y, 32.0f + pulse, Color{255, 180, 50, 255});
+        }
     }
 
     // 0. Render Interactive Hazard Radius Spheres (Glowing Fire/Smoke danger zones)
