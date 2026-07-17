@@ -300,6 +300,16 @@ void EvacPlannerApp::update() {
                         statusMessage_ = "Corridor edge un-linked successfully.";
                     }
                 }
+            } else if (currentTool_ == ToolMode::ToggleBlock) {
+                if (hoveredNodeId_ != -1) {
+                    Node* n = graph_.getNode(hoveredNodeId_);
+                    if (n) {
+                        n->type = (n->type == NodeType::Blocked) ? NodeType::Normal : NodeType::Blocked;
+                        solveAll();
+                        statusMessage_ = (n->type == NodeType::Blocked) ? 
+                            ("Added blockage to Node " + n->name + ".") : ("Removed blockage from Node " + n->name + ".");
+                    }
+                }
             } else if (hoveredNodeId_ != -1) {
                 if (currentTool_ == ToolMode::Select) {
                     draggingNodeId_ = hoveredNodeId_;
@@ -375,14 +385,15 @@ void EvacPlannerApp::drawHeader() {
         {"Select / Drag", ToolMode::Select, Color{40, 130, 240, 255}},
         {"Set Start", ToolMode::SetSpawn, Color{40, 130, 240, 255}},
         {"Toggle Exit", ToolMode::SetSafeZone, Color{40, 130, 240, 255}},
+        {"Add Blockage", ToolMode::ToggleBlock, Color{220, 100, 30, 255}},
         {"Add Edge", ToolMode::AddEdge, Color{40, 130, 240, 255}},
         {"Add Node", ToolMode::AddNode, Color{40, 130, 240, 255}},
         {"Del Node", ToolMode::DeleteNode, Color{210, 50, 50, 255}},
         {"Del Edge", ToolMode::DeleteEdge, Color{210, 50, 50, 255}}
     };
 
-    int startX = 460;
-    for (int i = 0; i < 7; i++) {
+    int startX = 330;
+    for (int i = 0; i < 8; i++) {
         Rectangle btnRect = {(float)(startX + i * 128), 12.0f, 122.0f, 48.0f};
         bool active = (currentTool_ == buttons[i].mode);
         Color bg = active ? buttons[i].highlightColor : Color{34, 44, 60, 255};
@@ -563,6 +574,18 @@ void EvacPlannerApp::drawSidebar() {
     drawText("HAZARD CONTROLS", 18, y, 17, Color{215, 230, 252, 255});
     y += 22;
 
+    // Add Blockage Tool Sidebar Shortcut Button (Available for ALL scenarios)
+    Rectangle btnBlockage = {16.0f, (float)y, 228.0f, 32.0f};
+    bool isBlockToolActive = (currentTool_ == ToolMode::ToggleBlock);
+    DrawRectangleRounded(btnBlockage, 0.2f, 4, isBlockToolActive ? Color{220, 100, 30, 255} : Color{45, 56, 75, 255});
+    DrawRectangleRoundedLines(btnBlockage, 0.2f, 4, 1.2f, isBlockToolActive ? Color{255, 180, 100, 255} : Color{80, 100, 130, 255});
+    drawText("Add Blockage Tool", 38, y + 7, 14, WHITE);
+    if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && CheckCollisionPointRec(GetMousePosition(), btnBlockage)) {
+        currentTool_ = ToolMode::ToggleBlock;
+        statusMessage_ = "Switched to Add Blockage Tool. Click any sector to set/remove impassable blockage.";
+    }
+
+    y += 38;
     Rectangle btnClear = {16.0f, (float)y, 228.0f, 34.0f};
     DrawRectangleRounded(btnClear, 0.2f, 4, Color{185, 45, 45, 255});
     drawText("Clear All Blockages", 34, y + 7, 15, WHITE);
