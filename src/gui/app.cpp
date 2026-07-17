@@ -98,9 +98,10 @@ void EvacPlannerApp::run() {
     }
 
     if (!fontPath.empty()) {
-        uiFont_ = LoadFontEx(fontPath.c_str(), 36, 0, 0);
+        uiFont_ = LoadFontEx(fontPath.c_str(), 96, 0, 0);
         if (uiFont_.texture.id != 0) {
-            SetTextureFilter(uiFont_.texture, TEXTURE_FILTER_POINT);
+            SetTextureFilter(uiFont_.texture, TEXTURE_FILTER_BILINEAR);
+            GenTextureMipmaps(&uiFont_.texture);
             isFontLoaded_ = true;
         }
     }
